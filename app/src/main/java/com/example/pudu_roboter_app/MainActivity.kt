@@ -37,7 +37,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun WifiCheckScreen(currentIp: String) {
-        val targetIp = "10.0.2.16" // Die gewünschte WLAN-IP
+        var targetIp = "10.0.2.16"
         val isConnected = currentIp == targetIp
         val statusText = if (isConnected) {
             "Mit der gewünschten IP $targetIp verbunden"
@@ -58,6 +58,12 @@ class MainActivity : ComponentActivity() {
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(text = statusText, fontSize = 18.sp)
+            OutlinedTextField(
+                value = targetIp,
+                onValueChange = { targetIp = it },
+                label = { Text("Ziel IP-Adresse") },
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 
