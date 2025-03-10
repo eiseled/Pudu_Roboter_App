@@ -4,46 +4,51 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.NetworkCapabilities
-import android.net.NetworkRequest
-import android.net.wifi.WifiInfo
-import android.net.wifi.WifiManager
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.ShoppingCart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavHost
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.*
+import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.net.HttpURLConnection
 import java.net.Inet4Address
-
+import java.net.URL
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            WifiCheckScreen(getWifiIpAddress())
+            val navController = rememberNavController()
+            NavHost(navController = navController, startDestination = "wifiCheck") {
+                composable("wifiCheck") { WifiCheckScreen(navController, getWifiIpAddress()) }
+                composable("secondScreen") { SecondScreen(navController) }
+            }
         }
     }
 
     @Composable
-    fun WifiCheckScreen(currentIp: String) {
-        var targetIp = "10.0.2.16"
+    fun WifiCheckScreen(navController: NavHostController, currentIp: String) {
+        var targetIp by remember { mutableStateOf("10.0.2.16") }
         val isConnected = currentIp == targetIp
         val statusText = if (isConnected) {
             "Mit der gewünschten IP $targetIp verbunden"
         } else {
             "Nicht mit der gewünschten IP verbunden. Aktuelle IP: $currentIp"
         }
+        var showError by remember { mutableStateOf(false) }
 
         Column(
             modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -64,6 +69,61 @@ class MainActivity : ComponentActivity() {
                 label = { Text("Ziel IP-Adresse") },
                 modifier = Modifier.fillMaxWidth(),
             )
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = {
+                if (isConnected) {
+                    navController.navigate("secondScreen")
+                } else {
+                    showError = true
+                }
+            }) {
+                Text("Zum zweiten Screen")
+            }
+
+            if (showError) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Fehler: Verbinde dich mit dem richtigen Netzwerk!", color = Color.Red, fontSize = 16.sp)
+            }
+        }
+    }
+    @Composable
+    fun SecondScreen(navController: NavHostController) {
+        var responseText by remember { mutableStateOf("Noch keine Antwort") }
+
+        Column(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+        ) {
+            Text("Dies ist der zweite Screen", fontSize = 20.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = { sendApiRequest("https://jsonplaceholder.typicode.com/posts/1") { responseText = it } }) {
+                Text("GET Request senden")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(onClick = { sendApiRequest("https://jsonplaceholder.typicode.com/posts", "POST") { responseText = it } }) {
+                Text("POST Request senden")
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(responseText, fontSize = 16.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = { navController.popBackStack() }) {
+                Text("Zurück")
+            }
+        }
+    }
+
+    private fun sendApiRequest(url: String, method: String = "GET", callback: (String) -> Unit) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val connection = URL(url).openConnection() as HttpURLConnection
+                connection.requestMethod = method
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                connection.disconnect()
+                callback(response)
+            } catch (e: Exception) {
+                callback("Fehler: ${e.message}")
+            }
         }
     }
 
