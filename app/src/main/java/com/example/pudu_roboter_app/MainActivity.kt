@@ -23,6 +23,7 @@ import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.Inet4Address
@@ -95,13 +96,32 @@ class MainActivity : ComponentActivity() {
     fun SecondScreen(navController: NavHostController) {
         var robots by remember { mutableStateOf<List<Robot>>(emptyList()) }
         var errorMessage by remember { mutableStateOf<String?>(null) }
+        var deviceId by remember { mutableStateOf<String?>(null) }
+        var isLoading by remember { mutableStateOf(true) }
 
-        // Automatisches Abrufen der Roboterdaten
+        // Automatisches Abrufen der Gerätedaten
         LaunchedEffect(Unit) {
-            fetchRobots { result ->
-                when (result) {
-                    is Result.Success -> robots = result.data
-                    is Result.Error -> errorMessage = result.message
+            // Hier wird der Netzwerkaufruf in einer Coroutine ausgeführt
+            val deviceIdResult = withContext(Dispatchers.IO) {
+                fetchDeviceId()
+            }
+
+            when (deviceIdResult) {
+                is Result.Success -> deviceId = deviceIdResult.data
+                is Result.Error -> errorMessage = deviceIdResult.message
+            }
+
+            isLoading = false
+        }
+
+        // Abrufen der Roboterdaten nach dem erfolgreichen Abrufen der Device ID
+        LaunchedEffect(deviceId) {
+            deviceId?.let {
+                fetchRobots { result ->
+                    when (result) {
+                        is Result.Success -> robots = result.data
+                        is Result.Error -> errorMessage = result.message
+                    }
                 }
             }
         }
@@ -111,20 +131,24 @@ class MainActivity : ComponentActivity() {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
         ) {
-            Text("Device ID: ${fetchDeviceId()}", fontSize = 20.sp)
-            Text("Roboter in der Gruppe", fontSize = 20.sp)
-            Spacer(modifier = Modifier.height(16.dp))
+            if (isLoading) {
+                CircularProgressIndicator()
+            } else {
+                Text("Device ID: ${deviceId ?: "Nicht verfügbar"}", fontSize = 20.sp)
+                Text("Roboter in der Gruppe", fontSize = 20.sp)
+                Spacer(modifier = Modifier.height(16.dp))
 
-            if (errorMessage != null) {
-                Text("Fehler: $errorMessage", color = Color.Red, fontSize = 16.sp)
-            }
-
-            // Dynamische Buttons für jeden Roboter
-            robots.forEach { robot ->
-                Button(onClick = { /* Hier könnte man den Roboter steuern */ }) {
-                    Text(robot.name)
+                if (errorMessage != null) {
+                    Text("Fehler: $errorMessage", color = Color.Red, fontSize = 16.sp)
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+
+                // Dynamische Buttons für jeden Roboter
+                robots.forEach { robot ->
+                    Button(onClick = { /* Hier könnte man den Roboter steuern */ }) {
+                        Text(robot.name)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -181,13 +205,48 @@ class MainActivity : ComponentActivity() {
             val url = "http://192.168.178.75:9050/api/devices"
             val connection = URL(url).openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+
+            val responseCode = connection.responseCode
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                return Result.Error("Server-Fehler: HTTP-Statuscode $responseCode")
+            }
 
             val response = connection.inputStream.bufferedReader().use { it.readText() }
             connection.disconnect()
 
-            Result.Success(response) // Gibt die gesamte Antwort als String zurück
+
+            val jsonObject = JSONObject(response)
+
+            // Überprüfen, ob "data" existiert
+            if (!jsonObject.has("data")) {
+                return Result.Error("Unerwartetes JSON-Format: 'data' fehlt. Erhaltene Schlüssel: ${jsonObject.keys().asSequence().toList()}")
+            }
+
+            val dataObject = jsonObject.getJSONObject("data")
+
+            // Überprüfen, ob "devices" existiert
+            if (!dataObject.has("devices")) {
+                return Result.Error("Unerwartetes JSON-Format: 'devices' fehlt. Erhaltene Schlüssel: ${dataObject.keys().asSequence().toList()}")
+            }
+
+            val devicesArray = dataObject.getJSONArray("devices")
+
+            if (devicesArray.length() > 0) {
+                val deviceObject = devicesArray.getJSONObject(0)
+                if (!deviceObject.has("deviceId")) {
+                    return Result.Error("Unerwartetes JSON-Format: 'deviceId' fehlt im ersten Gerät")
+                }
+                val deviceId = deviceObject.getString("deviceId")
+                Result.Success(deviceId)
+            } else {
+                Result.Error("Keine Geräte gefunden")
+            }
         } catch (e: Exception) {
-            Result.Error("Fehler beim Abrufen der Device ID: ${e.message}")
+            val errorMsg = e.message ?: "Unbekannter Fehler"
+            val exceptionType = e.javaClass.simpleName
+            Result.Error("Fehler beim Abrufen der Device ID ($exceptionType): $errorMsg")
         }
     }
 
