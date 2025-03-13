@@ -27,14 +27,17 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.Inet4Address
 import java.net.URL
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             val navController = rememberNavController()
-            NavHost(navController = navController, startDestination = "wifiCheck") {
-                composable("wifiCheck") { WifiCheckScreen(navController, getWifiIpAddress()) }
+            NavHost(navController = navController, startDestination = "secondScreen") {
+                //composable("wifiCheck") { WifiCheckScreen(navController, getWifiIpAddress()) }
                 composable("secondScreen") { SecondScreen(navController) }
             }
         }
@@ -108,6 +111,7 @@ class MainActivity : ComponentActivity() {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
         ) {
+            Text("Device ID: ${fetchDeviceId()}", fontSize = 20.sp)
             Text("Roboter in der Gruppe", fontSize = 20.sp)
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -145,10 +149,10 @@ class MainActivity : ComponentActivity() {
                 val deviceId = fetchDeviceId() ?: return@launch callback(Result.Error("Keine Device ID gefunden"))
 
                 // Schritt 2: `group_id` abrufen
-                val groupId = getGroupId(deviceId) ?: return@launch callback(Result.Error("Keine Gruppen gefunden"))
+                //val groupId = getGroupId(deviceId) ?: return@launch callback(Result.Error("Keine Gruppen gefunden"))
 
                 // Schritt 3: Roboter abrufen
-                val url = "http://127.0.0.1:90/api/robots?device=$deviceId&group_id=$groupId"
+                val url = "http://192.168.178.75:9050/api/robots?device=$deviceId" //&group_id=$groupId"
                 val connection = URL(url).openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
 
@@ -172,31 +176,25 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun fetchDeviceId(): String? {
+    private fun fetchDeviceId(): Result<String> {
         return try {
-            val url = "http://127.0.0.1:90/api/devices"
+            val url = "http://192.168.178.75:9050/api/devices"
             val connection = URL(url).openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
 
             val response = connection.inputStream.bufferedReader().use { it.readText() }
             connection.disconnect()
 
-            val jsonObject = JSONObject(response)
-            val devicesArray = jsonObject.getJSONObject("data").getJSONArray("devices")
-
-            if (devicesArray.length() > 0) {
-                devicesArray.getJSONObject(0).getString("deviceId")
-            } else {
-                null
-            }
+            Result.Success(response) // Gibt die gesamte Antwort als String zurück
         } catch (e: Exception) {
-            null
+            Result.Error("Fehler beim Abrufen der Device ID: ${e.message}")
         }
     }
 
+
     private fun getGroupId(deviceId: String): String? {
         return try {
-            val url = "http://127.0.0.1:90/api/robot/groups?device=$deviceId"
+            val url = "http://192.168.178.75:9050/api/robot/groups?device=$deviceId"
             val connection = URL(url).openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
 
