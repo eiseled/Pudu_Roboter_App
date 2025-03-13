@@ -8,18 +8,24 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHost
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -40,6 +46,145 @@ class MainActivity : ComponentActivity() {
             NavHost(navController = navController, startDestination = "secondScreen") {
                 //composable("wifiCheck") { WifiCheckScreen(navController, getWifiIpAddress()) }
                 composable("secondScreen") { SecondScreen(navController) }
+                composable(
+                    "robotMapScreen/{robotId}/{robotName}",
+                    arguments = listOf(
+                        navArgument("robotId") { type = NavType.StringType },
+                        navArgument("robotName") { type = NavType.StringType }
+                    )
+                ) { backStackEntry ->
+                    val robotId = backStackEntry.arguments?.getString("robotId") ?: ""
+                    val robotName = backStackEntry.arguments?.getString("robotName") ?: ""
+                    RobotMapScreen(navController, robotId, robotName)
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun RobotMapScreen(navController: NavHostController, robotId: String, robotName: String) {
+        var deliveryLocations by remember { mutableStateOf<List<DeliveryLocation>>(emptyList()) }
+        var errorMessage by remember { mutableStateOf<String?>(null) }
+        var isLoading by remember { mutableStateOf(true) }
+
+        // Daten abrufen
+        LaunchedEffect(robotId) {
+            // DeviceId abrufen
+            val deviceIdResult = withContext(Dispatchers.IO) {
+                fetchDeviceId()
+            }
+
+            when (deviceIdResult) {
+                is Result.Success -> {
+                    val deviceId = deviceIdResult.data
+
+                    // Roboterkarte abrufen
+                    val mapResult = withContext(Dispatchers.IO) {
+                        fetchRobotMap(deviceId, robotId)
+                    }
+
+                    when (mapResult) {
+                        is Result.Success -> {
+                            // Delivery-Orte aus der Karte extrahieren
+                            deliveryLocations = extractDeliveryLocations(mapResult.data)
+                        }
+                        is Result.Error -> errorMessage = mapResult.message
+                    }
+                }
+                is Result.Error -> errorMessage = deviceIdResult.message
+            }
+
+            isLoading = false
+        }
+
+        Column(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.Top,
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Roboter: $robotName",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Verfügbare Delivery-Orte",
+                fontSize = 18.sp
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (isLoading) {
+                CircularProgressIndicator()
+                Text("Lade Karteninformationen...", modifier = Modifier.padding(top = 16.dp))
+            } else if (errorMessage != null) {
+                Text(
+                    text = "Fehler: $errorMessage",
+                    color = Color.Red,
+                    fontSize = 16.sp
+                )
+            } else if (deliveryLocations.isEmpty()) {
+                Text(
+                    text = "Keine Delivery-Orte gefunden",
+                    color = Color.Gray,
+                    fontSize = 16.sp
+                )
+            } else {
+                LazyColumn {
+                    items(deliveryLocations) { location ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp)
+                            ) {
+                                Text(
+                                    text = location.name,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "ID: ${location.id}",
+                                    fontSize = 14.sp,
+                                    color = Color.Gray
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Position: (${location.x}, ${location.y})",
+                                    fontSize = 14.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+//                                Button(
+//                                    onClick = {
+//                                        // Hier könnte man eine Auslieferung starten
+//                                        CoroutineScope(Dispatchers.IO).launch {
+//                                            startDelivery(robotId, location.id)
+//                                        }
+//                                    },
+//                                    modifier = Modifier.align(Alignment.End)
+//                                ) {
+//                                    Text("Auslieferung starten")
+//                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = { navController.popBackStack() },
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            ) {
+                Text("Zurück")
             }
         }
     }
@@ -92,66 +237,90 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    @Composable
+   @Composable
     fun SecondScreen(navController: NavHostController) {
         var robots by remember { mutableStateOf<List<Robot>>(emptyList()) }
         var errorMessage by remember { mutableStateOf<String?>(null) }
         var deviceId by remember { mutableStateOf<String?>(null) }
+        var groupId by remember { mutableStateOf<String?>(null) }
         var isLoading by remember { mutableStateOf(true) }
 
-        // Automatisches Abrufen der Gerätedaten
         LaunchedEffect(Unit) {
-            // Hier wird der Netzwerkaufruf in einer Coroutine ausgeführt
             val deviceIdResult = withContext(Dispatchers.IO) {
                 fetchDeviceId()
             }
 
             when (deviceIdResult) {
-                is Result.Success -> deviceId = deviceIdResult.data
+                is Result.Success -> {
+                    deviceId = deviceIdResult.data
+                    deviceId?.let { devId ->
+                        val groupIdResult = withContext(Dispatchers.IO) {
+                            getGroupId(devId)
+                        }
+
+                        when (groupIdResult) {
+                            is Result.Success -> {
+                                groupId = groupIdResult.data
+                                val robotsResult = withContext(Dispatchers.IO) {
+                                    fetchRobots(devId, groupIdResult.data)
+                                }
+
+                                when (robotsResult) {
+                                    is Result.Success -> robots = robotsResult.data
+                                    is Result.Error -> errorMessage = robotsResult.message
+                                }
+                            }
+                            is Result.Error -> errorMessage = groupIdResult.message
+                        }
+                    }
+                }
                 is Result.Error -> errorMessage = deviceIdResult.message
             }
 
             isLoading = false
         }
 
-        // Abrufen der Roboterdaten nach dem erfolgreichen Abrufen der Device ID
-        LaunchedEffect(deviceId) {
-            deviceId?.let {
-                fetchRobots { result ->
-                    when (result) {
-                        is Result.Success -> robots = result.data
-                        is Result.Error -> errorMessage = result.message
-                    }
-                }
-            }
-        }
-
         Column(
             modifier = Modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.Center,
-            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (isLoading) {
                 CircularProgressIndicator()
+                Text("Lade Daten...", modifier = Modifier.padding(top = 16.dp))
             } else {
                 Text("Device ID: ${deviceId ?: "Nicht verfügbar"}", fontSize = 20.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Group ID: ${groupId ?: "Nicht verfügbar"}", fontSize = 20.sp)
+                Spacer(modifier = Modifier.height(16.dp))
                 Text("Roboter in der Gruppe", fontSize = 20.sp)
                 Spacer(modifier = Modifier.height(16.dp))
 
                 if (errorMessage != null) {
                     Text("Fehler: $errorMessage", color = Color.Red, fontSize = 16.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
 
-                // Dynamische Buttons für jeden Roboter
-                robots.forEach { robot ->
-                    Button(onClick = { /* Hier könnte man den Roboter steuern */ }) {
-                        Text(robot.name)
+                if (robots.isNotEmpty()) {
+                    LazyColumn {
+                        items(robots) { robot ->
+                            Button(
+                                onClick = { navController.navigate("robotMapScreen/${robot.id}/${robot.name}") },
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "${robot.name} (ID: ${robot.id})",
+                                    fontSize = 16.sp
+                                )
+                            }
+                        }
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
+                } else if (errorMessage == null) {
+                    Text("Keine Roboter gefunden", color = Color.Gray, fontSize = 16.sp)
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
             Button(onClick = { navController.popBackStack() }) {
                 Text("Zurück")
             }
@@ -159,44 +328,67 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    data class Robot(val id: String, val name: String)
+
+
+data class Robot(val id: String, val name: String)
 
     sealed class Result<out T> {
         data class Success<T>(val data: T) : Result<T>()
         data class Error(val message: String) : Result<Nothing>()
     }
 
-    private fun fetchRobots(callback: (Result<List<Robot>>) -> Unit) {
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                // Schritt 1: `device_id` abrufen
-                val deviceId = fetchDeviceId() ?: return@launch callback(Result.Error("Keine Device ID gefunden"))
+    private fun fetchRobots(deviceId: String, groupId: String): Result<List<Robot>> {
+        return try {
+            val url = "http://192.168.178.75:9050/api/robots?device=$deviceId&group_id=$groupId"
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
 
-                // Schritt 2: `group_id` abrufen
-                //val groupId = getGroupId(deviceId) ?: return@launch callback(Result.Error("Keine Gruppen gefunden"))
+            val responseCode = connection.responseCode
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                return Result.Error("Server-Fehler: HTTP-Statuscode $responseCode")
+            }
 
-                // Schritt 3: Roboter abrufen
-                val url = "http://192.168.178.75:9050/api/robots?device=$deviceId" //&group_id=$groupId"
-                val connection = URL(url).openConnection() as HttpURLConnection
-                connection.requestMethod = "GET"
+            val response = connection.inputStream.bufferedReader().use { it.readText() }
+            connection.disconnect()
 
-                val response = connection.inputStream.bufferedReader().use { it.readText() }
-                connection.disconnect()
+            val jsonObject = JSONObject(response)
 
-                val jsonObject = JSONObject(response)
-                val dataObject = jsonObject.getJSONObject("data")
-                val robotsArray = dataObject.getJSONArray("robots")
+            // Überprüfen, ob "data" existiert
+            if (!jsonObject.has("data")) {
+                return Result.Error("Unerwartetes JSON-Format: 'data' fehlt. Erhaltene Schlüssel: ${jsonObject.keys().asSequence().toList()}")
+            }
 
-                val robots = mutableListOf<Robot>()
-                for (i in 0 until robotsArray.length()) {
-                    val robot = robotsArray.getJSONObject(i)
-                    robots.add(Robot(robot.getString("id"), robot.getString("name")))
+            val dataObject = jsonObject.getJSONObject("data")
+
+            // Überprüfen, ob "robots" existiert
+            if (!dataObject.has("robots")) {
+                return Result.Error("Unerwartetes JSON-Format: 'robots' fehlt. Erhaltene Schlüssel: ${dataObject.keys().asSequence().toList()}")
+            }
+
+            val robotsArray = dataObject.getJSONArray("robots")
+
+            val robots = mutableListOf<Robot>()
+            for (i in 0 until robotsArray.length()) {
+                val robotObject = robotsArray.getJSONObject(i)
+
+                // Überprüfen, ob die erforderlichen Felder vorhanden sind
+                if (!robotObject.has("id") || !robotObject.has("name")) {
+                    return Result.Error("Unerwartetes JSON-Format: 'id' oder 'name' fehlt im Roboter")
                 }
 
-                callback(Result.Success(robots))
-            } catch (e: Exception) {
-                callback(Result.Error("Fehler beim Abrufen der Roboter: ${e.message}"))
+                robots.add(Robot(
+                    id = robotObject.getString("id"),
+                    name = robotObject.getString("name")
+                ))
             }
+
+            Result.Success(robots)
+        } catch (e: Exception) {
+            val errorMsg = e.message ?: "Unbekannter Fehler"
+            val exceptionType = e.javaClass.simpleName
+            Result.Error("Fehler beim Abrufen der Roboter ($exceptionType): $errorMsg")
         }
     }
 
@@ -251,28 +443,147 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    private fun getGroupId(deviceId: String): String? {
+    private fun getGroupId(deviceId: String): Result<String> {
         return try {
             val url = "http://192.168.178.75:9050/api/robot/groups?device=$deviceId"
             val connection = URL(url).openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+
+            val responseCode = connection.responseCode
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                return Result.Error("Server-Fehler: HTTP-Statuscode $responseCode")
+            }
 
             val response = connection.inputStream.bufferedReader().use { it.readText() }
             connection.disconnect()
 
             val jsonObject = JSONObject(response)
-            val groupsArray = jsonObject.getJSONObject("data").getJSONArray("robotGroups")
+
+            // Überprüfen, ob "data" existiert
+            if (!jsonObject.has("data")) {
+                return Result.Error("Unerwartetes JSON-Format: 'data' fehlt. Erhaltene Schlüssel: ${jsonObject.keys().asSequence().toList()}")
+            }
+
+            val dataObject = jsonObject.getJSONObject("data")
+
+            // Überprüfen, ob "robotGroups" existiert
+            if (!dataObject.has("robotGroups")) {
+                return Result.Error("Unerwartetes JSON-Format: 'robotGroups' fehlt. Erhaltene Schlüssel: ${dataObject.keys().asSequence().toList()}")
+            }
+
+            val groupsArray = dataObject.getJSONArray("robotGroups")
 
             if (groupsArray.length() > 0) {
-                groupsArray.getJSONObject(0).getString("id")
+                val groupObject = groupsArray.getJSONObject(0)
+                if (!groupObject.has("id")) {
+                    return Result.Error("Unerwartetes JSON-Format: 'id' fehlt in der ersten Gruppe")
+                }
+                val groupId = groupObject.getString("id")
+                Result.Success(groupId)
             } else {
-                null
+                Result.Error("Keine Gruppen gefunden")
             }
         } catch (e: Exception) {
-            null
+            val errorMsg = e.message ?: "Unbekannter Fehler"
+            val exceptionType = e.javaClass.simpleName
+            Result.Error("Fehler beim Abrufen der Group ID ($exceptionType): $errorMsg")
         }
     }
 
+
+    private fun fetchRobotMap(deviceId: String, robotId: String): Result<Map<String, Any>> {
+        return try {
+            val url = "http://192.168.178.75:9050/api/robot/map?device_id=$deviceId&robot_id=$robotId"
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+
+            val responseCode = connection.responseCode
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                return Result.Error("Server-Fehler: HTTP-Statuscode $responseCode")
+            }
+
+            val response = connection.inputStream.bufferedReader().use { it.readText() }
+            connection.disconnect()
+
+            val jsonObject = JSONObject(response)
+
+            // Überprüfen, ob "data" existiert
+            if (!jsonObject.has("data")) {
+                return Result.Error("Unerwartetes JSON-Format: 'data' fehlt. Erhaltene Schlüssel: ${jsonObject.keys().asSequence().toList()}")
+            }
+
+            val dataObject = jsonObject.getJSONObject("data")
+
+            // Überprüfen, ob "map" existiert
+            if (!dataObject.has("map")) {
+                return Result.Error("Unerwartetes JSON-Format: 'map' fehlt. Erhaltene Schlüssel: ${dataObject.keys().asSequence().toList()}")
+            }
+
+            val mapObject = dataObject.getJSONObject("map")
+
+            // Überprüfen, ob "elements" existiert
+            if (!mapObject.has("elements")) {
+                return Result.Error("Unerwartetes JSON-Format: 'elements' fehlt. Erhaltene Schlüssel: ${mapObject.keys().asSequence().toList()}")
+            }
+
+            // Map-Daten als generische Map zurückgeben, um sie später verarbeiten zu können
+            val resultMap = mutableMapOf<String, Any>()
+            resultMap["map"] = mapObject
+
+            Result.Success(resultMap)
+        } catch (e: Exception) {
+            val errorMsg = e.message ?: "Unbekannter Fehler"
+            val exceptionType = e.javaClass.simpleName
+            Result.Error("Fehler beim Abrufen der Roboterkarte ($exceptionType): $errorMsg")
+        }
+    }
+
+    // Datenklasse für Delivery-Orte
+    data class DeliveryLocation(
+        val id: String,
+        val name: String,
+        val x: Double,
+        val y: Double
+    )
+
+    // Hilfsfunktion, um Delivery-Orte aus den Map-Elementen zu extrahieren
+    private fun extractDeliveryLocations(mapData: Map<String, Any>): List<DeliveryLocation> {
+        val locations = mutableListOf<DeliveryLocation>()
+
+        try {
+            val mapObject = mapData["map"] as JSONObject
+            val elementsArray = mapObject.getJSONArray("elements")
+
+            for (i in 0 until elementsArray.length()) {
+                val element = elementsArray.getJSONObject(i)
+
+                // Wir suchen nach Elementen, die Delivery-Orte sind
+                // (Annahme: Typ oder andere Eigenschaften identifizieren Delivery-Orte)
+                if (element.has("type") && element.getString("type") == "LOCATION") {
+                    // Prüfen, ob alle notwendigen Felder vorhanden sind
+                    if (element.has("id") && element.has("name") && element.has("x") && element.has("y")) {
+                        locations.add(
+                            DeliveryLocation(
+                                id = element.getString("id"),
+                                name = element.getString("name"),
+                                x = element.getDouble("x"),
+                                y = element.getDouble("y")
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Bei Fehler leere Liste zurückgeben und optional Fehler loggen
+            // Log.e("ExtractDeliveryLocations", "Fehler beim Extrahieren der Delivery-Orte", e)
+        }
+
+        return locations
+    }
 
     private fun getWifiIpAddress(): String {
         val connectivityManager = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
