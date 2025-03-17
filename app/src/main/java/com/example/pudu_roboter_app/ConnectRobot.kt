@@ -6,7 +6,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-data class Robot(val id: String, val name: String)
+data class Robot(val id: String, val name: String, var batteryLevel: Int? = null)
 
 sealed class Result<out T> {
     data class Success<T>(val data: T) : Result<T>()
@@ -36,14 +36,58 @@ class ConnectRobot(private val serverAddress: String) {
         }
     }
 
-    suspend fun getGroupId(deviceId: String): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun fetchRobotStatus(deviceId: String, robotId: String): Result<Int> = withContext(Dispatchers.IO) {
         try {
-            val connection = URL(getUrl("robot/groups?device=$deviceId")).openConnection() as HttpURLConnection
+            val connection = URL(getUrl("robot/status?device_id=$deviceId&robot_id=$robotId")).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
             connection.connectTimeout = 5000
+
+            val responseCode = connection.responseCode
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                return@withContext Result.Error("Server-Fehler: HTTP-Statuscode $responseCode")
+            }
+
             val response = connection.inputStream.bufferedReader().use { it.readText() }
             connection.disconnect()
 
-            val groupsArray = JSONObject(response).getJSONObject("data").getJSONArray("robotGroups")
+            val jsonObject = JSONObject(response)
+            val data = jsonObject.getJSONObject("data")
+
+            if (!data.has("robotPower")) {
+                return@withContext Result.Error("Kein Batteriestatus gefunden.")
+            }
+
+            val batteryLevel = data.getInt("robotPower")
+            Result.Success(batteryLevel)
+        } catch (e: Exception) {
+            Result.Error("Fehler beim Abrufen des Robotstatus: ${e.message}")
+        }
+    }
+
+
+    suspend fun getGroupId(deviceId: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val connection = URL(getUrl("robot/groups?device=$deviceId")).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 5000
+
+            val responseCode = connection.responseCode
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                return@withContext Result.Error("Server-Fehler: HTTP-Statuscode $responseCode")
+            }
+
+            val response = connection.inputStream.bufferedReader().use { it.readText() }
+            connection.disconnect()
+
+            val jsonObject = JSONObject(response)
+            val dataObject = jsonObject.getJSONObject("data")
+
+            if (!dataObject.has("robotGroups")) {
+                return@withContext Result.Error("Keine Gruppen gefunden.")
+            }
+
+            val groupsArray = dataObject.getJSONArray("robotGroups")
+
             if (groupsArray.length() > 0) {
                 val groupId = groupsArray.getJSONObject(0).getString("id")
                 Result.Success(groupId)
@@ -51,23 +95,43 @@ class ConnectRobot(private val serverAddress: String) {
                 Result.Error("Keine Gruppen gefunden.")
             }
         } catch (e: Exception) {
-            Result.Error("Fehler beim Abrufen der Group-ID: ${e.message}")
+            Result.Error("Fehler beim Abrufen der Gruppen-ID: ${e.message}")
         }
     }
-
     suspend fun fetchRobots(deviceId: String, groupId: String): Result<List<Robot>> = withContext(Dispatchers.IO) {
         try {
             val connection = URL(getUrl("robots?device=$deviceId&group_id=$groupId")).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
             connection.connectTimeout = 5000
+
+            val responseCode = connection.responseCode
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                return@withContext Result.Error("Server-Fehler: HTTP-Statuscode $responseCode")
+            }
+
             val response = connection.inputStream.bufferedReader().use { it.readText() }
             connection.disconnect()
 
-            val robotsArray = JSONObject(response).getJSONObject("data").getJSONArray("robots")
-            val robots = mutableListOf<Robot>()
-            for (i in 0 until robotsArray.length()) {
-                val robotJson = robotsArray.getJSONObject(i)
-                robots.add(Robot(robotJson.getString("id"), robotJson.getString("name")))
+            val jsonObject = JSONObject(response)
+            val dataObject = jsonObject.getJSONObject("data")
+
+            if (!dataObject.has("robots")) {
+                return@withContext Result.Error("Keine Roboter gefunden.")
             }
+
+            val robotsArray = dataObject.getJSONArray("robots")
+            val robots = mutableListOf<Robot>()
+
+            for (i in 0 until robotsArray.length()) {
+                val robotObject = robotsArray.getJSONObject(i)
+                robots.add(
+                    Robot(
+                        id = robotObject.getString("id"),
+                        name = robotObject.getString("name")
+                    )
+                )
+            }
+
             Result.Success(robots)
         } catch (e: Exception) {
             Result.Error("Fehler beim Abrufen der Roboter: ${e.message}")
