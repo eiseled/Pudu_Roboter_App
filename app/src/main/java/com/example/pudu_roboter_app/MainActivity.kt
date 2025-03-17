@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -23,6 +25,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             val navController = rememberNavController()
             var serverAddress by remember { mutableStateOf("192.168.178.75:9050") }
+            var deviceId by remember { mutableStateOf("") }
+            var selectedRobot by remember { mutableStateOf<Robot?>(null) }
 
             NavHost(navController = navController, startDestination = "serverInput") {
                 composable("serverInput") {
@@ -30,13 +34,41 @@ class MainActivity : ComponentActivity() {
                         serverAddress = serverAddress,
                         onAddressChange = { serverAddress = it },
                         onConnect = {
-                            navController.navigate("secondScreen/${serverAddress}")
+                            navController.navigate("robotList/${serverAddress}")
                         }
                     )
                 }
-                composable("secondScreen/{serverAddress}") { backStackEntry ->
+                composable("robotList/{serverAddress}") { backStackEntry ->
                     val server = backStackEntry.arguments?.getString("serverAddress") ?: ""
-                    SecondScreen(navController, server)
+                    RobotListScreen(
+                        navController = navController,
+                        serverAddress = server,
+                        onDeviceIdReceived = { deviceId = it },
+                        onRobotSelected = { robot ->
+                            selectedRobot = robot
+                            navController.navigate("robotDetails/${server}/${robot.id}")
+                        }
+                    )
+                }
+                composable(
+                    "robotDetails/{serverAddress}/{robotId}",
+                    arguments = listOf(
+                        navArgument("serverAddress") { type = NavType.StringType },
+                        navArgument("robotId") { type = NavType.StringType }
+                    )
+                ) { backStackEntry ->
+                    val server = backStackEntry.arguments?.getString("serverAddress") ?: ""
+                    val robotId = backStackEntry.arguments?.getString("robotId") ?: ""
+
+                    // Find the selected robot from its ID
+                    val robot = selectedRobot ?: Robot(robotId, "Unbekannter Roboter")
+
+                    RobotDetailsScreen(
+                        navController = navController,
+                        serverAddress = server,
+                        deviceId = deviceId,
+                        robot = robot
+                    )
                 }
             }
         }
@@ -69,7 +101,12 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    fun SecondScreen(navController: androidx.navigation.NavHostController, serverAddress: String) {
+    fun RobotListScreen(
+        navController: androidx.navigation.NavHostController,
+        serverAddress: String,
+        onDeviceIdReceived: (String) -> Unit,
+        onRobotSelected: (Robot) -> Unit
+    ) {
         val connectRobot = remember { ConnectRobot(serverAddress) }
         var robots by remember { mutableStateOf<List<Robot>>(emptyList()) }
         var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -82,6 +119,7 @@ class MainActivity : ComponentActivity() {
                 when (deviceIdResult) {
                     is Result.Success -> {
                         val deviceId = deviceIdResult.data
+                        onDeviceIdReceived(deviceId)
                         val groupIdResult = connectRobot.getGroupId(deviceId)
                         when (groupIdResult) {
                             is Result.Success -> {
@@ -103,11 +141,13 @@ class MainActivity : ComponentActivity() {
 
         Column(
             modifier = Modifier.fillMaxSize().padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text("Server: $serverAddress", fontSize = 18.sp)
             Spacer(modifier = Modifier.height(16.dp))
+
+            Text("Verfügbare Roboter", fontSize = 20.sp)
+            Spacer(modifier = Modifier.height(8.dp))
 
             if (isLoading) {
                 CircularProgressIndicator()
@@ -118,10 +158,12 @@ class MainActivity : ComponentActivity() {
                 } else if (robots.isEmpty()) {
                     Text("Keine Roboter gefunden", fontSize = 16.sp, color = androidx.compose.ui.graphics.Color.Gray)
                 } else {
-                    LazyColumn {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f)
+                    ) {
                         items(robots) { robot ->
                             Button(
-                                onClick = { /* Navigiere zu RobotDetailsScreen */ },
+                                onClick = { onRobotSelected(robot) },
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                             ) {
                                 Text("${robot.name} (ID: ${robot.id})", fontSize = 16.sp)
@@ -138,4 +180,3 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
