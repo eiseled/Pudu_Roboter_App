@@ -74,38 +74,4 @@ class ConnectRobot(private val serverAddress: String) {
         }
     }
 
-    suspend fun fetchRobotMap(deviceId: String, robotId: String): Result<JSONObject> = withContext(Dispatchers.IO) {
-        try {
-            val connection = URL(getUrl("robot/map?device_id=$deviceId&robot_id=$robotId")).openConnection() as HttpURLConnection
-            connection.connectTimeout = 5000
-            val response = connection.inputStream.bufferedReader().use { it.readText() }
-            connection.disconnect()
-
-            val mapObject = JSONObject(response).getJSONObject("data").getJSONObject("map")
-            Result.Success(mapObject)
-        } catch (e: Exception) {
-            Result.Error("Fehler beim Abrufen der Roboterkarte: ${e.message}")
-        }
-    }
-
-    fun extractDeliveryLocations(map: JSONObject): List<DeliveryLocation> {
-        val elements = map.getJSONArray("elements")
-        val locations = mutableListOf<DeliveryLocation>()
-        for (i in 0 until elements.length()) {
-            val element = elements.getJSONObject(i)
-            if (element.optString("type") == "LOCATION") {
-                locations.add(
-                    DeliveryLocation(
-                        id = element.getString("id"),
-                        name = element.getString("name"),
-                        x = element.getDouble("x"),
-                        y = element.getDouble("y")
-                    )
-                )
-            }
-        }
-        return locations
-    }
 }
-
-data class DeliveryLocation(val id: String, val name: String, val x: Double, val y: Double)
