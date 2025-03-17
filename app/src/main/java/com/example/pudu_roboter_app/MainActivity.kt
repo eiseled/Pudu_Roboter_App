@@ -108,8 +108,8 @@ class MainActivity : ComponentActivity() {
         onRobotSelected: (Robot) -> Unit
     ) {
         val connectRobot = remember { ConnectRobot(serverAddress) }
-        var robots = remember { mutableStateListOf<Robot>() }
-        var batteryLevels = remember { mutableStateMapOf<String, Int>() }
+        var robots by remember { mutableStateOf<List<Robot>>(emptyList()) }
+        var robotStates by remember { mutableStateOf<Map<String, Pair<String, Int>>>(emptyMap()) }
         var errorMessage by remember { mutableStateOf<String?>(null) }
         var isLoading by remember { mutableStateOf(true) }
         val coroutineScope = rememberCoroutineScope()
@@ -121,7 +121,6 @@ class MainActivity : ComponentActivity() {
                     is Result.Success -> {
                         val deviceId = deviceIdResult.data
                         onDeviceIdReceived(deviceId)
-
                         val groupIdResult = connectRobot.getGroupId(deviceId)
                         when (groupIdResult) {
                             is Result.Success -> {
@@ -129,18 +128,17 @@ class MainActivity : ComponentActivity() {
                                 val robotsResult = connectRobot.fetchRobots(deviceId, groupId)
                                 when (robotsResult) {
                                     is Result.Success -> {
-                                        robots.clear()
-                                        robots.addAll(robotsResult.data)
+                                        robots = robotsResult.data
 
-                                        // Batterielevel für jeden Roboter abrufen
-                                        robots.forEach { robot ->
-                                            coroutineScope.launch {
-                                                val batteryResult = connectRobot.fetchRobotStatus(deviceId, robot.id)
-                                                if (batteryResult is Result.Success) {
-                                                    batteryLevels[robot.id] = batteryResult.data
-                                                }
+                                        // Lade den Status & Batterie-Level für jeden Roboter
+                                        val states = mutableMapOf<String, Pair<String, Int>>()
+                                        for (robot in robots) {
+                                            val statusResult = connectRobot.getRobotStatus(deviceId, robot.id)
+                                            if (statusResult is Result.Success) {
+                                                states[robot.id] = statusResult.data
                                             }
                                         }
+                                        robotStates = states
                                     }
                                     is Result.Error -> errorMessage = robotsResult.message
                                 }
@@ -158,6 +156,9 @@ class MainActivity : ComponentActivity() {
             modifier = Modifier.fillMaxSize().padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Text("Server: $serverAddress", fontSize = 18.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+
             Text("Verfügbare Roboter", fontSize = 20.sp)
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -170,33 +171,24 @@ class MainActivity : ComponentActivity() {
                 } else if (robots.isEmpty()) {
                     Text("Keine Roboter gefunden", fontSize = 16.sp, color = androidx.compose.ui.graphics.Color.Gray)
                 } else {
-                    LazyColumn {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f)
+                    ) {
                         items(robots) { robot ->
+                            val robotData = robotStates[robot.id] ?: Pair("Unknown", 0)
+                            val isFree = robotData.first == "Free"
+                            val batteryLevel = robotData.second
+
                             Button(
                                 onClick = { onRobotSelected(robot) },
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                enabled = isFree,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isFree) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                    contentColor = if (isFree) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                )
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.fillMaxWidth().padding(8.dp)
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(robot.name, fontSize = 16.sp)
-                                        Text("ID: ${robot.id}", fontSize = 12.sp, color = androidx.compose.ui.graphics.Color.Gray)
-                                    }
-
-                                    // Batterieanzeige
-                                    val batteryLevel = batteryLevels[robot.id]
-                                    if (batteryLevel != null) {
-                                        Text(
-                                            "$batteryLevel%",
-                                            fontSize = 16.sp,
-                                            color = if (batteryLevel < 20) androidx.compose.ui.graphics.Color.Red else androidx.compose.ui.graphics.Color.Green
-                                        )
-                                    } else {
-                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                    }
-                                }
+                                Text("${robot.name} (ID: ${robot.id}) - Status: ${robotData.first} - Akku: ${batteryLevel}%", fontSize = 16.sp)
                             }
                         }
                     }
@@ -209,5 +201,4 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
 }
