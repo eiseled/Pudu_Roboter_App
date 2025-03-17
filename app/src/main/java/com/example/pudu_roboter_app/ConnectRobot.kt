@@ -138,7 +138,7 @@ class ConnectRobot(private val serverAddress: String) {
         }
     }
 
-    suspend fun getRobotStatus(deviceId: String, robotId: String): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun getRobotStatus(deviceId: String, robotId: String): Result<Pair<String, Int>> = withContext(Dispatchers.IO) {
         try {
             val connection = URL(getUrl("robot/status?device_id=$deviceId&robot_id=$robotId")).openConnection() as HttpURLConnection
             connection.connectTimeout = 5000
@@ -146,10 +146,12 @@ class ConnectRobot(private val serverAddress: String) {
             connection.disconnect()
 
             val jsonObject = JSONObject(response)
-            val robotState = jsonObject.getJSONObject("data").getString("robotState")
-            val batteryLevel = jsonObject.getJSONObject("data").getString("robotPower")
-            Result.Success(robotState)  // Gibt "Free" oder "Busy" zurück
-            Result.Success(batteryLevel)  // Gibt den Ladestand zurück
+            val data = jsonObject.getJSONObject("data")
+
+            val robotState = data.getString("robotState") // "Free" oder "Busy"
+            val batteryLevel = data.getInt("robotPower") // Akku in %
+
+            Result.Success(Pair(robotState, batteryLevel))
         } catch (e: Exception) {
             Result.Error("Fehler beim Abrufen des Robot-Status: ${e.message}")
         }
