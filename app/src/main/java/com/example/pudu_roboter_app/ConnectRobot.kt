@@ -2,14 +2,20 @@ package com.example.pudu_roboter_app
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-data class Robot(val id: String, val name: String, var batteryLevel: Int? = null)
+data class Robot(val id: String, val name: String, var batteryLevel: Int? = null, var isOnline: Boolean = true)
 data class Destination(val name: String, val type: String)
 data class DeliveryTaskResponse(val success: Boolean, val errorMessage: String?)
+
+data class RobotStatusUpdate(
+    val robots: List<Robot>,
+    val robotStates: Map<String, Pair<String, Int>>
+)
 
 sealed class Result<out T> {
     data class Success<T>(val data: T) : Result<T>()
@@ -38,35 +44,6 @@ class ConnectRobot(private val serverAddress: String) {
             Result.Error("Fehler beim Abrufen der Device-ID: ${e.message}")
         }
     }
-
-    suspend fun fetchRobotStatus(deviceId: String, robotId: String): Result<Int> = withContext(Dispatchers.IO) {
-        try {
-            val connection = URL(getUrl("robot/status?device_id=$deviceId&robot_id=$robotId")).openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 5000
-
-            val responseCode = connection.responseCode
-            if (responseCode != HttpURLConnection.HTTP_OK) {
-                return@withContext Result.Error("Server-Fehler: HTTP-Statuscode $responseCode")
-            }
-
-            val response = connection.inputStream.bufferedReader().use { it.readText() }
-            connection.disconnect()
-
-            val jsonObject = JSONObject(response)
-            val data = jsonObject.getJSONObject("data")
-
-            if (!data.has("robotPower")) {
-                return@withContext Result.Error("Kein Batteriestatus gefunden.")
-            }
-
-            val batteryLevel = data.getInt("robotPower")
-            Result.Success(batteryLevel)
-        } catch (e: Exception) {
-            Result.Error("Fehler beim Abrufen des Robotstatus: ${e.message}")
-        }
-    }
-
 
     suspend fun getGroupId(deviceId: String): Result<String> = withContext(Dispatchers.IO) {
         try {
@@ -101,6 +78,7 @@ class ConnectRobot(private val serverAddress: String) {
             Result.Error("Fehler beim Abrufen der Gruppen-ID: ${e.message}")
         }
     }
+
     suspend fun fetchRobots(deviceId: String, groupId: String): Result<List<Robot>> = withContext(Dispatchers.IO) {
         try {
             val connection = URL(getUrl("robots?device=$deviceId&group_id=$groupId")).openConnection() as HttpURLConnection
@@ -130,7 +108,8 @@ class ConnectRobot(private val serverAddress: String) {
                 robots.add(
                     Robot(
                         id = robotObject.getString("id"),
-                        name = robotObject.getString("name")
+                        name = robotObject.getString("name"),
+                        isOnline = true // Standardmäßig werden alle Roboter als online markiert
                     )
                 )
             }
@@ -140,6 +119,7 @@ class ConnectRobot(private val serverAddress: String) {
             Result.Error("Fehler beim Abrufen der Roboter: ${e.message}")
         }
     }
+
     suspend fun fetchDestinations(deviceId: String, robotId: String): Result<List<Destination>> = withContext(Dispatchers.IO) {
         try {
             val urlString = getUrl("destinations?device=$deviceId&robot_id=$robotId")
@@ -195,6 +175,83 @@ class ConnectRobot(private val serverAddress: String) {
             Result.Error("Fehler beim Abrufen des Robot-Status: ${e.message}")
         }
     }
+
+    // Verbesserte Funktion mit Timeout-Handling für unresponsive Roboter
+    suspend fun getRobotStatusWithTimeout(deviceId: String, robotId: String, timeoutMs: Long = 2000): Result<Pair<String, Int>>? {
+        return withTimeoutOrNull(timeoutMs) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val connection = URL(getUrl("robot/status?device_id=$deviceId&robot_id=$robotId")).openConnection() as HttpURLConnection
+                    connection.connectTimeout = 1000 // Kürzere Verbindungszeit
+                    connection.readTimeout = 1000 // Kürzere Lesezeit
+
+                    val responseCode = connection.responseCode
+                    if (responseCode != HttpURLConnection.HTTP_OK) {
+                        connection.disconnect()
+                        return@withContext null
+                    }
+
+                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    connection.disconnect()
+
+                    val jsonObject = JSONObject(response)
+                    val data = jsonObject.getJSONObject("data")
+
+                    val robotState = data.getString("robotState")
+                    val batteryLevel = data.getInt("robotPower")
+
+                    Result.Success(Pair(robotState, batteryLevel))
+                } catch (e: Exception) {
+                    null // Bei Ausnahme null zurückgeben anstatt einen Fehler
+                }
+            }
+        }
+    }
+
+    suspend fun updateRobotStatuses(deviceId: String? = null): Result<RobotStatusUpdate> = withContext(Dispatchers.IO) {
+        try {
+            // Wenn deviceId nicht übergeben wurde, rufe sie ab
+            val finalDeviceId = deviceId ?: when (val deviceIdResult = fetchDeviceId()) {
+                is Result.Success -> deviceIdResult.data
+                is Result.Error -> return@withContext Result.Error(deviceIdResult.message)
+            }
+
+            // Hole die Gruppen-ID
+            val groupId = when (val groupIdResult = getGroupId(finalDeviceId)) {
+                is Result.Success -> groupIdResult.data
+                is Result.Error -> return@withContext Result.Error(groupIdResult.message)
+            }
+
+            // Hole die Roboter
+            val robots = when (val robotsResult = fetchRobots(finalDeviceId, groupId)) {
+                is Result.Success -> robotsResult.data.toMutableList()
+                is Result.Error -> return@withContext Result.Error(robotsResult.message)
+            }
+
+            // Lade den Status & Batterie-Level für jeden Roboter mit Timeout
+            val states = mutableMapOf<String, Pair<String, Int>>()
+
+            for (i in robots.indices) {
+                val robot = robots[i]
+                val statusResult = getRobotStatusWithTimeout(finalDeviceId, robot.id)
+
+                if (statusResult != null && statusResult is Result.Success) {
+                    states[robot.id] = statusResult.data
+                    robots[i] = robot.copy(isOnline = true)
+                } else {
+                    // Wenn kein Status erhalten wurde oder Timeout, markiere als offline
+                    states[robot.id] = Pair("Offline", 0)
+                    robots[i] = robot.copy(isOnline = false)
+                }
+            }
+
+            // Erstelle und gib das Update-Objekt zurück
+            Result.Success(RobotStatusUpdate(robots, states))
+        } catch (e: Exception) {
+            Result.Error("Fehler beim Aktualisieren der Roboterstatus: ${e.message}")
+        }
+    }
+
     // Moved from RobotDetailsScreen.kt
     suspend fun sendDeliveryTask(
         deviceId: String,
@@ -270,16 +327,14 @@ class ConnectRobot(private val serverAddress: String) {
         }
     }
 
-
-// Helper functions
-fun getTypeLabel(type: String): String {
-    return when (type) {
-        "table" -> "Tisch"
-        "dining_outlet" -> "Ausgabestation"
-        "transit" -> "Übergangspunkt"
-        "dishwashing" -> "Spülstation"
-        else -> type
+    // Helper functions
+    fun getTypeLabel(type: String): String {
+        return when (type) {
+            "table" -> "Tisch"
+            "dining_outlet" -> "Ausgabestation"
+            "transit" -> "Übergangspunkt"
+            "dishwashing" -> "Spülstation"
+            else -> type
+        }
     }
-}
-
 }

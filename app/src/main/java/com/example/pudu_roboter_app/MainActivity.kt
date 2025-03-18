@@ -116,41 +116,20 @@ class MainActivity : ComponentActivity() {
         var isLoading by remember { mutableStateOf(true) }
         val coroutineScope = rememberCoroutineScope()
 
-        // Funktion für das manuelle und automatische Update
-        fun updateRobotStatuses() {
+        // Funktion zum Laden der Roboterdaten
+        fun loadRobotData() {
+            isLoading = true
             coroutineScope.launch {
-                val deviceIdResult = connectRobot.fetchDeviceId()
-                when (deviceIdResult) {
+                val result = connectRobot.updateRobotStatuses()
+                when (result) {
                     is Result.Success -> {
-                        val deviceId = deviceIdResult.data
-                        onDeviceIdReceived(deviceId)
-
-                        val groupIdResult = connectRobot.getGroupId(deviceId)
-                        when (groupIdResult) {
-                            is Result.Success -> {
-                                val groupId = groupIdResult.data
-                                val robotsResult = connectRobot.fetchRobots(deviceId, groupId)
-                                when (robotsResult) {
-                                    is Result.Success -> {
-                                        robots = robotsResult.data
-
-                                        // Lade den Status & Batterie-Level für jeden Roboter
-                                        val states = mutableMapOf<String, Pair<String, Int>>()
-                                        for (robot in robots) {
-                                            val statusResult = connectRobot.getRobotStatus(deviceId, robot.id)
-                                            if (statusResult is Result.Success) {
-                                                states[robot.id] = statusResult.data
-                                            }
-                                        }
-                                        robotStates = states
-                                    }
-                                    is Result.Error -> errorMessage = robotsResult.message
-                                }
-                            }
-                            is Result.Error -> errorMessage = groupIdResult.message
-                        }
+                        robots = result.data.robots
+                        robotStates = result.data.robotStates
+                        errorMessage = null
                     }
-                    is Result.Error -> errorMessage = deviceIdResult.message
+                    is Result.Error -> {
+                        errorMessage = result.message
+                    }
                 }
                 isLoading = false
             }
@@ -159,7 +138,27 @@ class MainActivity : ComponentActivity() {
         // Automatische Aktualisierung alle 15 Sekunden
         LaunchedEffect(Unit) {
             while (true) {
-                updateRobotStatuses()
+                val result = connectRobot.updateRobotStatuses()
+                when (result) {
+                    is Result.Success -> {
+                        // Extrahiere die DeviceID aus der ersten Anfrage
+                        if (result.data.robots.isNotEmpty()) {
+                            // Wir müssen die deviceId aus einer anderen Quelle bekommen
+                            val deviceIdResult = connectRobot.fetchDeviceId()
+                            if (deviceIdResult is Result.Success) {
+                                onDeviceIdReceived(deviceIdResult.data)
+                            }
+                        }
+
+                        robots = result.data.robots
+                        robotStates = result.data.robotStates
+                        errorMessage = null
+                    }
+                    is Result.Error -> {
+                        errorMessage = result.message
+                    }
+                }
+                isLoading = false
                 kotlinx.coroutines.delay(15000) // Warte 15 Sekunden vor der nächsten Aktualisierung
             }
         }
@@ -191,6 +190,7 @@ class MainActivity : ComponentActivity() {
                             val status = robotData.first
                             val batteryLevel = robotData.second
                             val isFree = status == "Free"
+                            val isOnline = status != "Offline"
 
                             Card(
                                 modifier = Modifier
@@ -223,6 +223,7 @@ class MainActivity : ComponentActivity() {
                                                         "Free" -> Color.Green
                                                         "Busy" -> Color.Red
                                                         "Charging" -> Color.Blue
+                                                        "Offline" -> Color.Gray
                                                         else -> Color.Gray
                                                     },
                                                     shape = androidx.compose.foundation.shape.CircleShape
@@ -237,39 +238,48 @@ class MainActivity : ComponentActivity() {
 
                                     Spacer(modifier = Modifier.height(4.dp))
 
-                                    // Batterieanzeige
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(
-                                            text = "Akku: ",
-                                            fontSize = 14.sp
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(16.dp)
-                                                .background(Color.LightGray, shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                    // Batterieanzeige nur anzeigen, wenn online
+                                    if (isOnline) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.fillMaxWidth()
                                         ) {
+                                            Text(
+                                                text = "Akku: ",
+                                                fontSize = 14.sp
+                                            )
                                             Box(
                                                 modifier = Modifier
-                                                    .fillMaxHeight()
-                                                    .fillMaxWidth(batteryLevel / 100f)
-                                                    .background(
-                                                        when {
-                                                            batteryLevel > 60 -> Color.Green
-                                                            batteryLevel > 30 -> Color(0xFFFFA500) // Orange
-                                                            else -> Color.Red
-                                                        },
-                                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                                                    )
+                                                    .weight(1f)
+                                                    .height(16.dp)
+                                                    .background(Color.LightGray, shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxHeight()
+                                                        .fillMaxWidth(batteryLevel / 100f)
+                                                        .background(
+                                                            when {
+                                                                batteryLevel > 60 -> Color.Green
+                                                                batteryLevel > 30 -> Color(0xFFFFA500) // Orange
+                                                                else -> Color.Red
+                                                            },
+                                                            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                                        )
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "$batteryLevel%",
+                                                fontSize = 14.sp
                                             )
                                         }
-                                        Spacer(modifier = Modifier.width(8.dp))
+                                    } else {
+                                        // Offline-Hinweis anzeigen
                                         Text(
-                                            text = "$batteryLevel%",
-                                            fontSize = 14.sp
+                                            text = "Roboter ist ausgeschaltet oder nicht erreichbar",
+                                            fontSize = 14.sp,
+                                            color = Color.Gray
                                         )
                                     }
 
@@ -278,15 +288,19 @@ class MainActivity : ComponentActivity() {
                                     // Aktionsbutton
                                     Button(
                                         onClick = { onRobotSelected(robot) },
-                                        enabled = isFree,
+                                        enabled = isFree && isOnline,
                                         modifier = Modifier.fillMaxWidth(),
                                         colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (isFree) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                            contentColor = if (isFree) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                            containerColor = if (isFree && isOnline) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                            contentColor = if (isFree && isOnline) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                                         )
                                     ) {
                                         Text(
-                                            text = if (isFree) "Auswählen" else "Nicht verfügbar",
+                                            text = when {
+                                                !isOnline -> "Nicht erreichbar"
+                                                !isFree -> "Nicht verfügbar, der Roboter ist beschäftigt"
+                                                else -> "Auswählen"
+                                            },
                                             fontSize = 14.sp
                                         )
                                     }
@@ -300,7 +314,7 @@ class MainActivity : ComponentActivity() {
             Spacer(modifier = Modifier.height(16.dp))
 
             // Refresh-Button für manuelle Aktualisierung
-            Button(onClick = { updateRobotStatuses() }) {
+            Button(onClick = { loadRobotData() }) {
                 Text("Refresh")
             }
 
@@ -312,7 +326,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
     @Composable
     fun RobotDeliveryScreen(
         navController: androidx.navigation.NavHostController,
