@@ -2,11 +2,14 @@ package com.example.pudu_roboter_app
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
 data class Robot(val id: String, val name: String, var batteryLevel: Int? = null)
+data class Destination(val name: String, val type: String)
+data class DeliveryTaskResponse(val success: Boolean, val errorMessage: String?)
 
 sealed class Result<out T> {
     data class Success<T>(val data: T) : Result<T>()
@@ -192,5 +195,91 @@ class ConnectRobot(private val serverAddress: String) {
             Result.Error("Fehler beim Abrufen des Robot-Status: ${e.message}")
         }
     }
+    // Moved from RobotDetailsScreen.kt
+    suspend fun sendDeliveryTask(
+        deviceId: String,
+        robotId: String,
+        destination: String
+    ): Result<DeliveryTaskResponse> = withContext(Dispatchers.IO) {
+        try {
+            val url = URL(getUrl("robot/delivery/task"))
+            val connection = url.openConnection() as HttpURLConnection
+            connection.connectTimeout = 5000
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json")
+
+            // Erstelle das destinations-Objekt
+            val destinationObj = JSONObject()
+            destinationObj.put("destination", destination)
+            destinationObj.put("id", "Task id, will be returned when the status is synchronized ")  // ID kann leer bleiben, wird vom Server generiert
+
+            val destinationsArray = JSONArray()
+            destinationsArray.put(destinationObj)
+
+            // Erstelle das tray-Objekt
+            val trayObj = JSONObject()
+            trayObj.put("destinations", destinationsArray)
+
+            val traysArray = JSONArray()
+            traysArray.put(trayObj)
+
+            // Erstelle das Hauptobjekt
+            val jsonRequest = JSONObject()
+            jsonRequest.put("deviceId", deviceId)
+            jsonRequest.put("robotId", robotId)
+            jsonRequest.put("type", "new")  // Neue Aufgabe
+            jsonRequest.put("deliverySort", "auto")  // Automatische Sortierung
+            jsonRequest.put("executeTask", true)  // Sofort ausführen
+            jsonRequest.put("trays", traysArray)
+
+            // Sende den Request
+            val outputStream = connection.outputStream
+            outputStream.write(jsonRequest.toString().toByteArray())
+            outputStream.close()
+
+            // Verarbeite die Antwort
+            val responseCode = connection.responseCode
+
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                connection.disconnect()
+
+                val jsonResponse = JSONObject(response)
+                val code = jsonResponse.optInt("code", -1)
+
+                if (code == 0) {
+                    val data = jsonResponse.optJSONObject("data")
+                    if (data != null) {
+                        val success = data.optBoolean("success", false)
+                        Result.Success(DeliveryTaskResponse(success, null))
+                    } else {
+                        Result.Error("Keine Daten in der Antwort gefunden")
+                    }
+                } else {
+                    val msg = jsonResponse.optString("msg", "Unbekannter Fehler")
+                    Result.Error("API-Fehler: $msg")
+                }
+            } else {
+                val errorStream = connection.errorStream?.bufferedReader()?.use { it.readText() }
+                connection.disconnect()
+                Result.Error("HTTP-Fehler: $responseCode")
+            }
+        } catch (e: Exception) {
+            Result.Error("Fehler beim Senden der Lieferaufgabe: ${e.message}")
+        }
+    }
+
+
+// Helper functions
+fun getTypeLabel(type: String): String {
+    return when (type) {
+        "table" -> "Tisch"
+        "dining_outlet" -> "Ausgabestation"
+        "transit" -> "Übergangspunkt"
+        "dishwashing" -> "Spülstation"
+        else -> type
+    }
+}
 
 }
