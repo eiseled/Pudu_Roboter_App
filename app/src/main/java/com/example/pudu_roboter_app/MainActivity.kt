@@ -3,6 +3,7 @@ package com.example.pudu_roboter_app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -178,31 +179,118 @@ class MainActivity : ComponentActivity() {
                 Text("Lade Daten...", modifier = Modifier.padding(top = 16.dp))
             } else {
                 if (errorMessage != null) {
-                    Text("Fehler: $errorMessage", color = androidx.compose.ui.graphics.Color.Red, fontSize = 16.sp)
+                    Text("Fehler: $errorMessage", color = Color.Red, fontSize = 16.sp)
                 } else if (robots.isEmpty()) {
-                    Text("Keine Roboter gefunden", fontSize = 16.sp, color = androidx.compose.ui.graphics.Color.Gray)
+                    Text("Keine Roboter gefunden", fontSize = 16.sp, color = Color.Gray)
                 } else {
                     LazyColumn(
                         modifier = Modifier.weight(1f)
                     ) {
                         items(robots) { robot ->
                             val robotData = robotStates[robot.id] ?: Pair("Unknown", 0)
-                            val isFree = robotData.first == "Free"
+                            val status = robotData.first
                             val batteryLevel = robotData.second
+                            val isFree = status == "Free"
 
-                            Button(
-                                onClick = { onRobotSelected(robot) },
-                                enabled = isFree,
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isFree) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                    contentColor = if (isFree) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                                )
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
                             ) {
-                                Text(
-                                    "${robot.name} (ID: ${robot.id}) - Status: ${robotData.first} - Akku: ${batteryLevel}%",
-                                    fontSize = 16.sp
-                                )
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp)
+                                ) {
+                                    // Roboter Name und ID
+                                    Text(
+                                        text = "${robot.name} (ID: ${robot.id})",
+                                        fontSize = 16.sp,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                    )
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    // Status mit Farbkodierung
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(12.dp)
+                                                .background(
+                                                    when (status) {
+                                                        "Free" -> Color.Green
+                                                        "Busy" -> Color.Red
+                                                        "Charging" -> Color.Blue
+                                                        else -> Color.Gray
+                                                    },
+                                                    shape = androidx.compose.foundation.shape.CircleShape
+                                                )
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Status: $status",
+                                            fontSize = 14.sp
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    // Batterieanzeige
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = "Akku: ",
+                                            fontSize = 14.sp
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(16.dp)
+                                                .background(Color.LightGray, shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxHeight()
+                                                    .fillMaxWidth(batteryLevel / 100f)
+                                                    .background(
+                                                        when {
+                                                            batteryLevel > 60 -> Color.Green
+                                                            batteryLevel > 30 -> Color(0xFFFFA500) // Orange
+                                                            else -> Color.Red
+                                                        },
+                                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                                    )
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "$batteryLevel%",
+                                            fontSize = 14.sp
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Aktionsbutton
+                                    Button(
+                                        onClick = { onRobotSelected(robot) },
+                                        enabled = isFree,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isFree) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                            contentColor = if (isFree) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    ) {
+                                        Text(
+                                            text = if (isFree) "Auswählen" else "Nicht verfügbar",
+                                            fontSize = 14.sp
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
