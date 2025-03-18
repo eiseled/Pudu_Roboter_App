@@ -137,6 +137,42 @@ class ConnectRobot(private val serverAddress: String) {
             Result.Error("Fehler beim Abrufen der Roboter: ${e.message}")
         }
     }
+    suspend fun fetchDestinations(deviceId: String, robotId: String): Result<List<Destination>> = withContext(Dispatchers.IO) {
+        try {
+            val urlString = getUrl("destinations?device=$deviceId&robot_id=$robotId")
+            val connection = URL(urlString).openConnection() as HttpURLConnection
+            connection.connectTimeout = 5000
+            connection.requestMethod = "GET"
+
+            val responseCode = connection.responseCode
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                connection.disconnect()
+
+                val jsonResponse = JSONObject(response)
+                val data = jsonResponse.optJSONObject("data")
+                val destinationsArray = data?.optJSONArray("destinations")
+
+                if (destinationsArray != null) {
+                    val destinations = mutableListOf<Destination>()
+                    for (i in 0 until destinationsArray.length()) {
+                        val destinationJson = destinationsArray.getJSONObject(i)
+                        destinations.add(Destination(
+                            name = destinationJson.optString("name", ""),
+                            type = destinationJson.optString("type", "")
+                        ))
+                    }
+                    return@withContext Result.Success(destinations)
+                } else {
+                    return@withContext Result.Error("Keine Zielorte gefunden")
+                }
+            } else {
+                return@withContext Result.Error("HTTP-Fehler: $responseCode")
+            }
+        } catch (e: Exception) {
+            return@withContext Result.Error("Fehler beim Abrufen der Zielorte: ${e.message}")
+        }
+    }
 
     suspend fun getRobotStatus(deviceId: String, robotId: String): Result<Pair<String, Int>> = withContext(Dispatchers.IO) {
         try {

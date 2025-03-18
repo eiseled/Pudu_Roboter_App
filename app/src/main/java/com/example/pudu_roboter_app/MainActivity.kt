@@ -114,13 +114,15 @@ class MainActivity : ComponentActivity() {
         var isLoading by remember { mutableStateOf(true) }
         val coroutineScope = rememberCoroutineScope()
 
-        LaunchedEffect(Unit) {
+        // Funktion für das manuelle und automatische Update
+        fun updateRobotStatuses() {
             coroutineScope.launch {
                 val deviceIdResult = connectRobot.fetchDeviceId()
                 when (deviceIdResult) {
                     is Result.Success -> {
                         val deviceId = deviceIdResult.data
                         onDeviceIdReceived(deviceId)
+
                         val groupIdResult = connectRobot.getGroupId(deviceId)
                         when (groupIdResult) {
                             is Result.Success -> {
@@ -149,6 +151,14 @@ class MainActivity : ComponentActivity() {
                     is Result.Error -> errorMessage = deviceIdResult.message
                 }
                 isLoading = false
+            }
+        }
+
+        // Automatische Aktualisierung alle 15 Sekunden
+        LaunchedEffect(Unit) {
+            while (true) {
+                updateRobotStatuses()
+                kotlinx.coroutines.delay(15000) // Warte 15 Sekunden vor der nächsten Aktualisierung
             }
         }
 
@@ -188,14 +198,26 @@ class MainActivity : ComponentActivity() {
                                     contentColor = if (isFree) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                                 )
                             ) {
-                                Text("${robot.name} (ID: ${robot.id}) - Status: ${robotData.first} - Akku: ${batteryLevel}%", fontSize = 16.sp)
+                                Text(
+                                    "${robot.name} (ID: ${robot.id}) - Status: ${robotData.first} - Akku: ${batteryLevel}%",
+                                    fontSize = 16.sp
+                                )
                             }
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Refresh-Button für manuelle Aktualisierung
+            Button(onClick = { updateRobotStatuses() }) {
+                Text("Refresh")
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Zurück-Button
             Button(onClick = { navController.popBackStack() }) {
                 Text("Zurück")
             }
