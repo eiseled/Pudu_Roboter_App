@@ -3,6 +3,7 @@ package com.example.pudu_roboter_app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.rememberNavController
@@ -76,17 +78,29 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+
+
     @Composable
     fun ServerInputScreen(
         serverAddress: String,
         onAddressChange: (String) -> Unit,
         onConnect: () -> Unit
     ) {
+        val buttonColors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFFE2001A), // Your specified red color
+            contentColor = Color.White // Text color that shows well on red
+        )
         Column(
             modifier = Modifier.fillMaxSize().padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Top
         ) {
+            Image(
+                painter = painterResource(id = R.drawable.logo),
+                contentDescription = "Logo",
+                modifier = Modifier
+                    .size(350.dp)  // Passe die Größe nach Bedarf an
+            )
             Text("Serveradresse eingeben", fontSize = 24.sp)
             Spacer(Modifier.height(16.dp))
             OutlinedTextField(
@@ -96,7 +110,8 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(24.dp))
-            Button(onClick = onConnect) {
+            Button(onClick = onConnect,
+                colors = buttonColors) {
                 Text("Verbinden")
             }
         }
@@ -115,7 +130,10 @@ class MainActivity : ComponentActivity() {
         var errorMessage by remember { mutableStateOf<String?>(null) }
         var isLoading by remember { mutableStateOf(true) }
         val coroutineScope = rememberCoroutineScope()
-
+        val buttonColors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFFE2001A), // Your specified red color
+            contentColor = Color.White // Text color that shows well on red
+        )
         // Funktion zum Laden der Roboterdaten
         fun loadRobotData() {
             isLoading = true
@@ -174,7 +192,7 @@ class MainActivity : ComponentActivity() {
             Spacer(modifier = Modifier.height(8.dp))
 
             if (isLoading) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(color = Color(0xFFE2001A))
                 Text("Lade Daten...", modifier = Modifier.padding(top = 16.dp))
             } else {
                 if (errorMessage != null) {
@@ -291,7 +309,7 @@ class MainActivity : ComponentActivity() {
                                         enabled = isFree && isOnline,
                                         modifier = Modifier.fillMaxWidth(),
                                         colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (isFree && isOnline) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                            containerColor = if (isFree && isOnline) Color(0xFFE2001A) else MaterialTheme.colorScheme.surfaceVariant,
                                             contentColor = if (isFree && isOnline) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                                         )
                                     ) {
@@ -314,14 +332,14 @@ class MainActivity : ComponentActivity() {
             Spacer(modifier = Modifier.height(16.dp))
 
             // Refresh-Button für manuelle Aktualisierung
-            Button(onClick = { loadRobotData() }) {
+            Button(onClick = { loadRobotData() }, colors = buttonColors) {
                 Text("Refresh")
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
             // Zurück-Button
-            Button(onClick = { navController.popBackStack() }) {
+            Button(onClick = { navController.popBackStack() }, colors = buttonColors) {
                 Text("Zurück")
             }
         }
@@ -342,6 +360,10 @@ class MainActivity : ComponentActivity() {
         var taskStatus by remember { mutableStateOf<String?>(null) }
         var isTaskSending by remember { mutableStateOf(false) }
         val coroutineScope = rememberCoroutineScope()
+        val buttonColors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFFE2001A), // Your specified red color
+            contentColor = Color.White // Text color that shows well on red
+        )
 
         // Funktion zum Filtern der Zielorte
         fun filterDestinations(destinations: List<Destination>): List<Destination> {
@@ -437,7 +459,7 @@ class MainActivity : ComponentActivity() {
             }
 
             if (isLoading) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(color = Color(0xFFE2001A))
                 Text("Lade Zielorte...", modifier = Modifier.padding(top = 16.dp))
             } else {
                 if (errorMessage != null) {
@@ -465,7 +487,8 @@ class MainActivity : ComponentActivity() {
                                     sendTask(destination)
                                 },
                                 enabled = !isTaskSending,
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                colors = buttonColors
                             ) {
                                 Column(
                                     horizontalAlignment = Alignment.Start,
@@ -487,7 +510,8 @@ class MainActivity : ComponentActivity() {
             Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = { navController.popBackStack() },
-                enabled = !isTaskSending
+                enabled = !isTaskSending,
+                colors = buttonColors
             ) {
                 Text("Zurück")
             }
