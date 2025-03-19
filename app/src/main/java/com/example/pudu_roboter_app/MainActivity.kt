@@ -57,6 +57,24 @@ class MainActivity : ComponentActivity() {
                     val robotName = backStackEntry.arguments?.getString("robotName") ?: ""
                     RobotMapScreen(navController, robotId, robotName)
                 }
+                composable(
+                    "robotCall/{serverAddress}/{robotId}",
+                    arguments = listOf(
+                        navArgument("serverAddress") { type = NavType.StringType },
+                        navArgument("robotId") { type = NavType.StringType }
+                    )
+                ) { backStackEntry ->
+                    val server = backStackEntry.arguments?.getString("serverAddress") ?: ""
+                    val robotId = backStackEntry.arguments?.getString("robotId") ?: ""
+                    val robot = selectedRobot ?: Robot(robotId, "Unbekannter Roboter")
+
+                    RobotCallScreen(
+                        navController = navController,
+                        serverAddress = server,
+                        deviceId = deviceId,
+                        robot = robot
+                    )
+                }
             }
         }
     }
@@ -433,7 +451,72 @@ data class Robot(val id: String, val name: String)
                 val deviceId = deviceObject.getString("deviceId")
                 Result.Success(deviceId)
             } else {
+<<<<<<< Updated upstream
                 Result.Error("Keine Geräte gefunden")
+=======
+                if (errorMessage != null) {
+                    Text("Fehler: $errorMessage", color = Color.Red, fontSize = 16.sp)
+                } else if (filteredDestinations.isEmpty()) {
+                    Text("Keine Tische gefunden", fontSize = 16.sp, color = Color.Gray)
+                } else {
+                    LazyColumn(modifier = Modifier.weight(1f)) {
+                        items(filteredDestinations) { destination ->
+                            Button(
+                                onClick = {
+                                    isTaskSending = true
+                                    coroutineScope.launch {
+                                        val result = connectRobot.sendDeliveryTask(deviceId, robot.id, destination.name)
+                                        taskStatus = if (result is Result.Success && result.data.success) {
+                                            "Lieferauftrag zu ${destination.name} erfolgreich gesendet!"
+                                        } else {
+                                            "Fehler: Lieferauftrag konnte nicht gesendet werden."
+                                        }
+                                        isTaskSending = false
+                                    }
+                                },
+                                enabled = !isTaskSending,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                            ) {
+                                Text(destination.name, fontSize = 16.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Keep existing buttons
+            Button(
+                onClick = { navController.navigate("multiDelivery/$serverAddress/${robot.id}") },
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+            ) {
+                Text("Mehrfach-Lieferung")
+            }
+
+            Button(
+                onClick = { navController.navigate("robotMap/$serverAddress/${robot.id}") },
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+            ) {
+                Text("Karte anzeigen")
+            }
+            Button(
+                onClick = { navController.navigate("robotCall/$serverAddress/${robot.id}") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
+            ) {
+                Text("Single Calls")
+            }
+            Button(
+                onClick = { navController.popBackStack() },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Zurück")
+>>>>>>> Stashed changes
             }
         } catch (e: Exception) {
             val errorMsg = e.message ?: "Unbekannter Fehler"
@@ -489,6 +572,106 @@ data class Robot(val id: String, val name: String)
             val errorMsg = e.message ?: "Unbekannter Fehler"
             val exceptionType = e.javaClass.simpleName
             Result.Error("Fehler beim Abrufen der Group ID ($exceptionType): $errorMsg")
+        }
+    }
+    @Composable
+    fun RobotCallScreen(
+        navController: androidx.navigation.NavHostController,
+        serverAddress: String,
+        deviceId: String,
+        robot: Robot
+    ) {
+        val connectRobot = remember { ConnectRobot(serverAddress) }
+        var allDestinations by remember { mutableStateOf<List<Destination>>(emptyList()) }
+        var errorMessage by remember { mutableStateOf<String?>(null) }
+        var isLoading by remember { mutableStateOf(true) }
+        var taskStatus by remember { mutableStateOf<String?>(null) }
+        var isTaskSending by remember { mutableStateOf(false) }
+        val coroutineScope = rememberCoroutineScope()
+
+        LaunchedEffect(Unit) {
+            coroutineScope.launch {
+                val result = connectRobot.fetchDestinations(deviceId, robot.id)
+                if (result is Result.Success) {
+                    allDestinations = result.data
+                } else if (result is Result.Error) {
+                    errorMessage = result.message
+                }
+                isLoading = false
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("Einzelruf für ${robot.name}", fontSize = 24.sp)
+            Text("ID: ${robot.id}", fontSize = 16.sp, color = Color.Gray)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (taskStatus != null) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (taskStatus!!.startsWith("Fehler")) Color.Red else Color.Green
+                    )
+                ) {
+                    Text(
+                        text = taskStatus!!,
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            }
+
+            if (isLoading) {
+                CircularProgressIndicator()
+                Text("Lade Zielorte...", modifier = Modifier.padding(top = 16.dp))
+            } else {
+                if (errorMessage != null) {
+                    Text("Fehler: $errorMessage", color = Color.Red, fontSize = 16.sp)
+                } else if (allDestinations.isEmpty()) {
+                    Text("Keine Ziele gefunden", fontSize = 16.sp, color = Color.Gray)
+                } else {
+                    LazyColumn(modifier = Modifier.weight(1f)) {
+                        items(allDestinations) { destination ->
+                            Button(
+                                onClick = {
+                                    if (!isTaskSending) {
+                                        isTaskSending = true
+                                        coroutineScope.launch {
+                                            val result = connectRobot.sendRobotCall(deviceId, robot.id, destination)
+                                            taskStatus = if (result is Result.Success && result.data.success) {
+                                                "Roboter wurde zu ${destination.name} geschickt!"
+                                            } else {
+                                                "Fehler: Roboter konnte nicht gerufen werden."
+                                            }
+                                            isTaskSending = false
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                            ) {
+                                Text(destination.name, fontSize = 16.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = { navController.popBackStack() },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Zurück")
+            }
         }
     }
 
