@@ -208,7 +208,7 @@ fun MultiDeliveryScreen(
                     }
                 },
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))
             ) {
                 Text("Abbrechen")
             }
