@@ -1,5 +1,6 @@
 package com.example.pudu_roboter_app
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -7,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -158,66 +160,77 @@ fun MultiDeliveryScreen(
                 Text("Ausführen")
             }
         }
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = {
-                coroutineScope.launch {
-                    val result = connectRobot.cancelAllDeliveries(deviceId, robot.id)
-                    taskStatus = if (result is Result.Success && result.data) {
-                        "Alle Lieferungen wurden abgebrochen!"
-                    } else {
-                        "Fehler: Lieferung konnte nicht abgebrochen werden."
-                    }
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
-        ) {
-            Text("Abbrechen")
-        }
-
         Spacer(modifier = Modifier.height(8.dp))
 
-        Button(
-            onClick = {
-                coroutineScope.launch {
-                    val result = connectRobot.forceCompleteDelivery(deviceId, robot.id)
-                    taskStatus = if (result is Result.Success && result.data) {
-                        "Lieferung wurde erzwungen!"
-                    } else {
-                        "Fehler: Lieferung konnte nicht erzwungen werden."
-                    }
-                }
-            },
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))
-        ) {
-            Text("Lieferung erzwingen")
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Navigation buttons fixed at the bottom
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Button(
                 onClick = { navController.navigate("robotCall/$serverAddress/${robot.id}") },
+                modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
             ) {
                 Text("One-Way Calls")
             }
-            Spacer(modifier = Modifier.height(8.dp))
+
+            Spacer(modifier = Modifier.width(8.dp)) // Optional, für etwas Abstand zwischen den Buttons
 
             Button(
                 onClick = { navController.navigate("robotMap/$serverAddress/${robot.id}") },
+                modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))
             ) {
                 Text("Karte anzeigen")
             }
+        }
 
-            Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp)) // Optional, Abstand zwischen den Reihen
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Button(
+                onClick = {
+                    coroutineScope.launch {
+                        val result = connectRobot.cancelAllDeliveries(deviceId, robot.id)
+                        taskStatus = if (result is Result.Success && result.data) {
+                            "Alle Lieferungen wurden abgebrochen!"
+                        } else {
+                            "Fehler: Lieferung konnte nicht abgebrochen werden."
+                        }
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
+            ) {
+                Text("Abbrechen")
+            }
+
+            Spacer(modifier = Modifier.width(8.dp)) // Optional, für etwas Abstand zwischen den Buttons
+
+            Button(
+                onClick = {
+                    coroutineScope.launch {
+                        val result = connectRobot.forceCompleteDelivery(deviceId, robot.id)
+                        taskStatus = if (result is Result.Success && result.data) {
+                            "Lieferung wurde erzwungen!"
+                        } else {
+                            "Fehler: Lieferung konnte nicht erzwungen werden."
+                        }
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))
+            ) {
+                Text("Lieferung erzwingen")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
 
             Button(
                 onClick = { navController.popBackStack() },
@@ -227,4 +240,3 @@ fun MultiDeliveryScreen(
             }
         }
     }
-}
