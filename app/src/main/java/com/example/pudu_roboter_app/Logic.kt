@@ -26,7 +26,10 @@ sealed class Result<out T> {
 
 class ConnectRobot(private val serverAddress: String) {
 
-    private fun getUrl(endpoint: String) = "http://$serverAddress/api/$endpoint"
+    private fun getUrl(endpoint: String): String {
+        val prefix = if (serverAddress.startsWith("http://") || serverAddress.startsWith("https://")) "" else "http://"
+        return "$prefix$serverAddress/api/$endpoint"
+    }
 
     suspend fun fetchDeviceId(): Result<String> = withContext(Dispatchers.IO) {
         try {
