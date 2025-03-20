@@ -21,11 +21,15 @@ import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.ui.geometry.Offset
-
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 
 
 class MainActivity : ComponentActivity() {
+    private val brandRed = Color(0xFFE2001A)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -87,7 +91,7 @@ class MainActivity : ComponentActivity() {
                     // Find the selected robot from its ID
                     val robot = selectedRobot ?: Robot(robotId, "Unbekannter Roboter")
 
-                    RobotDeliveryScreen(
+                    MultiDeliveryScreen(
                         navController = navController,
                         serverAddress = server,
                         deviceId = deviceId,
@@ -166,8 +170,14 @@ class MainActivity : ComponentActivity() {
         Column(
             modifier = Modifier.fillMaxSize().padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Top
         ) {
+            Image(
+                painter = painterResource(id = R.drawable.logo),
+                contentDescription = "Logo",
+                modifier = Modifier
+                    .size(250.dp)  // Passe die Größe nach Bedarf an
+            )
             Text("Serveradresse eingeben", fontSize = 24.sp)
             Spacer(Modifier.height(16.dp))
             OutlinedTextField(
@@ -177,7 +187,8 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(24.dp))
-            Button(onClick = onConnect) {
+            Button(onClick = onConnect,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))) {
                 Text("Verbinden")
             }
         }
@@ -255,7 +266,7 @@ class MainActivity : ComponentActivity() {
             Spacer(modifier = Modifier.height(8.dp))
 
             if (isLoading) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(color = Color(0xFFE2001A))
                 Text("Lade Daten...", modifier = Modifier.padding(top = 16.dp))
             } else {
                 if (errorMessage != null) {
@@ -372,7 +383,7 @@ class MainActivity : ComponentActivity() {
                                         enabled = isFree && isOnline,
                                         modifier = Modifier.fillMaxWidth(),
                                         colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (isFree && isOnline) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                            containerColor = if (isFree && isOnline) Color(0xFFE2001A) else Color.Gray,
                                             contentColor = if (isFree && isOnline) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                                         )
                                     ) {
@@ -395,141 +406,19 @@ class MainActivity : ComponentActivity() {
             Spacer(modifier = Modifier.height(16.dp))
 
             // Refresh-Button für manuelle Aktualisierung
-            Button(onClick = { loadRobotData() }) {
+            Button(onClick = { loadRobotData() }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))) {
                 Text("Refresh")
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
             // Zurück-Button
-            Button(onClick = { navController.popBackStack() }) {
+            Button(onClick = { navController.popBackStack() },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))) {
                 Text("Zurück")
             }
         }
     }
-    @Composable
-    fun RobotDeliveryScreen(
-        navController: androidx.navigation.NavHostController,
-        serverAddress: String,
-        deviceId: String,
-        robot: Robot
-    ) {
-        val connectRobot = remember { ConnectRobot(serverAddress) }
-        var allDestinations by remember { mutableStateOf<List<Destination>>(emptyList()) }
-        var filteredDestinations by remember { mutableStateOf<List<Destination>>(emptyList()) }
-        var errorMessage by remember { mutableStateOf<String?>(null) }
-        var isLoading by remember { mutableStateOf(true) }
-        var taskStatus by remember { mutableStateOf<String?>(null) }
-        var isTaskSending by remember { mutableStateOf(false) }
-        val coroutineScope = rememberCoroutineScope()
-
-        LaunchedEffect(Unit) {
-            coroutineScope.launch {
-                val result = connectRobot.fetchDestinations(deviceId, robot.id)
-                if (result is Result.Success) {
-                    allDestinations = result.data
-                    filteredDestinations = result.data.filter { it.type == "table" } // ✅ Only show tables
-                } else if (result is Result.Error) {
-                    errorMessage = result.message
-                }
-                isLoading = false
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text("Roboter: ${robot.name}", fontSize = 24.sp)
-            Text("ID: ${robot.id}", fontSize = 16.sp, color = Color.Gray)
-            Spacer(modifier = Modifier.height(16.dp))
-
-            if (taskStatus != null) {
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                    colors = CardDefaults.cardColors(containerColor = if (taskStatus!!.startsWith("Fehler")) Color.Red else Color.Green)
-                ) {
-                    Text(
-                        text = taskStatus!!,
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        modifier = Modifier.padding(16.dp)
-                    )
-                }
-            }
-
-            if (isLoading) {
-                CircularProgressIndicator()
-                Text("Lade Zielorte...", modifier = Modifier.padding(top = 16.dp))
-            } else {
-                if (errorMessage != null) {
-                    Text("Fehler: $errorMessage", color = Color.Red, fontSize = 16.sp)
-                } else if (filteredDestinations.isEmpty()) {
-                    Text("Keine Tische gefunden", fontSize = 16.sp, color = Color.Gray)
-                } else {
-                    LazyColumn(modifier = Modifier.weight(1f)) {
-                        items(filteredDestinations) { destination ->
-                            Button(
-                                onClick = {
-                                    isTaskSending = true
-                                    coroutineScope.launch {
-                                        val result = connectRobot.sendDeliveryTask(deviceId, robot.id, destination.name)
-                                        taskStatus = if (result is Result.Success && result.data.success) {
-                                            "Lieferauftrag zu ${destination.name} erfolgreich gesendet!"
-                                        } else {
-                                            "Fehler: Lieferauftrag konnte nicht gesendet werden."
-                                        }
-                                        isTaskSending = false
-                                    }
-                                },
-                                enabled = !isTaskSending,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                            ) {
-                                Text(destination.name, fontSize = 16.sp)
-                            }
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Keep existing buttons
-            Button(
-                onClick = { navController.navigate("multiDelivery/$serverAddress/${robot.id}") },
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-            ) {
-                Text("Mehrfach-Lieferung")
-            }
-
-            Button(
-                onClick = { navController.navigate("robotMap/$serverAddress/${robot.id}") },
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-            ) {
-                Text("Karte anzeigen")
-            }
-            Button(
-                onClick = { navController.navigate("robotCall/$serverAddress/${robot.id}") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
-            ) {
-                Text("Single Calls")
-            }
-            Button(
-                onClick = { navController.popBackStack() },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Zurück")
-            }
-        }
-    }
-
 
     @Composable
     fun MultiDeliveryScreen(
@@ -560,12 +449,14 @@ class MainActivity : ComponentActivity() {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // Header area
             Text("Mehrfachlieferung", fontSize = 24.sp)
             Text("Roboter: ${robot.name}", fontSize = 16.sp, color = Color.Gray)
             Spacer(modifier = Modifier.height(16.dp))
 
+            // Status card
             if (taskStatus != null) {
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
@@ -582,78 +473,110 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            LazyColumn {
-                items(filteredDestinations) { destination ->
-                    val isSelected = selectedDestinations.contains(destination)
-                    Button(
-                        onClick = { selectedDestinations = selectedDestinations + destination },
-                        enabled = !isSelected,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                    ) {
-                        Text(destination.name, fontSize = 16.sp)
+            // Content area - using weight to make it scrollable and fill available space
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                // Available destinations
+                LazyColumn(
+                ) {
+                    items(filteredDestinations) { destination ->
+                        val isSelected = selectedDestinations.contains(destination)
+                        Button(
+                            onClick = { selectedDestinations = selectedDestinations + destination },
+                            enabled = !isSelected,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))
+                        ) {
+                            Text(destination.name, fontSize = 16.sp)
+                        }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Ausgewählte Ziele:", fontSize = 18.sp, color = Color.Gray)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Ausgewählte Ziele:", fontSize = 18.sp, color = Color.Gray,fontWeight = FontWeight.Bold,)
 
-            LazyColumn {
-                items(selectedDestinations) { destination ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.LightGray)
-                    ) {
-                        Row(
+                // Selected destinations
+                LazyColumn(
+                ) {
+                    items(selectedDestinations) { destination ->
+                        Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(vertical = 4.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.LightGray)
                         ) {
-                            Text(destination.name, fontSize = 16.sp, modifier = Modifier.weight(1f))
-                            Button(
-                                onClick = { selectedDestinations = selectedDestinations - destination },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("X", color = Color.White)
+                                Text(destination.name, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                                Button(
+                                    onClick = { selectedDestinations = selectedDestinations - destination },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                                ) {
+                                    Text("X", color = Color.White)
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = {
-                    isTaskSending = true
-                    coroutineScope.launch {
-                        val result = connectRobot.sendMultiDeliveryTask(deviceId, robot.id, selectedDestinations)
-                        taskStatus = when (result) {
-                            is Result.Success -> {
-                                selectedDestinations = emptyList()
-                                "Lieferauftrag erfolgreich gesendet!"
+                // Execute button
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = {
+                        isTaskSending = true
+                        coroutineScope.launch {
+                            val result = connectRobot.sendMultiDeliveryTask(deviceId, robot.id, selectedDestinations)
+                            taskStatus = when (result) {
+                                is Result.Success -> {
+                                    selectedDestinations = emptyList()
+                                    "Lieferauftrag erfolgreich gesendet!"
+                                }
+                                is Result.Error -> result.message
                             }
-                            is Result.Error -> result.message
+                            isTaskSending = false
                         }
-                        isTaskSending = false
-                    }
-                },
-                enabled = selectedDestinations.isNotEmpty() && !isTaskSending,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Ausführen")
+                    },
+                    enabled = selectedDestinations.isNotEmpty() && !isTaskSending,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))
+                ) {
+                    Text("Ausführen")
+                }
             }
+            Spacer(modifier = Modifier.height(8.dp))
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = { navController.popBackStack() },
-                modifier = Modifier.fillMaxWidth()
+            // Navigation buttons fixed at the bottom
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Zurück")
+                Button(
+                    onClick = { navController.navigate("robotCall/$serverAddress/${robot.id}") },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
+                ) {
+                    Text("One-Way Calls")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = { navController.navigate("robotMap/$serverAddress/${robot.id}") },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))
+                ) {
+                    Text("Karte anzeigen")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = { navController.popBackStack() },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))
+                ) {
+                    Text("Zurück")
+                }
             }
         }
     }
@@ -692,7 +615,7 @@ class MainActivity : ComponentActivity() {
             Spacer(modifier = Modifier.height(16.dp))
 
             if (isLoading) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(color = Color(0xFFE2001A))
                 Text("Lade Karte...", modifier = Modifier.padding(top = 16.dp))
             } else if (!errorMessage.isNullOrEmpty()) {
                 Text("Fehler: $errorMessage", color = Color.Red, fontSize = 16.sp)
@@ -768,10 +691,9 @@ class MainActivity : ComponentActivity() {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // ✅ BACK BUTTON TO PREVIOUS SCREEN
             Button(
                 onClick = { navController.popBackStack() },
-                modifier = Modifier.fillMaxWidth()
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))
             ) {
                 Text("Zurück")
             }
@@ -831,7 +753,7 @@ class MainActivity : ComponentActivity() {
             }
 
             if (isLoading) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(color = Color(0xFFE2001A))
                 Text("Lade Zielorte...", modifier = Modifier.padding(top = 16.dp))
             } else {
                 if (errorMessage != null) {
@@ -856,9 +778,12 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
+
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
+                                    .padding(vertical = 4.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))
+
                             ) {
                                 Text(destination.name, fontSize = 16.sp)
                             }
@@ -871,7 +796,7 @@ class MainActivity : ComponentActivity() {
 
             Button(
                 onClick = { navController.popBackStack() },
-                modifier = Modifier.fillMaxWidth()
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))
             ) {
                 Text("Zurück")
             }
