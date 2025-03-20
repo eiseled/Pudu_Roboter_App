@@ -484,6 +484,74 @@ class ConnectRobot(private val serverAddress: String) {
             }
         }
 
+    suspend fun cancelAllDeliveries(deviceId: String, robotId: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val url = URL(getUrl("robot/action"))
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json")
+
+            val requestBody = JSONObject().apply {
+                put("deviceId", deviceId)
+                put("robotId", robotId)
+                put("action", "CancelAllDelivery")
+            }
+
+            connection.outputStream.use { it.write(requestBody.toString().toByteArray()) }
+
+            val responseCode = connection.responseCode
+            return@withContext if (responseCode == HttpURLConnection.HTTP_OK) {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                connection.disconnect()
+                val jsonResponse = JSONObject(response)
+                if (jsonResponse.optInt("code") == 0) {
+                    Result.Success(jsonResponse.getJSONObject("data").optBoolean("success", false))
+                } else {
+                    Result.Error("API-Fehler: ${jsonResponse.optString("msg", "Unbekannter Fehler")}")
+                }
+            } else {
+                connection.disconnect()
+                Result.Error("HTTP-Fehler: $responseCode")
+            }
+        } catch (e: Exception) {
+            Result.Error("Fehler beim Abbrechen der Lieferung: ${e.message}")
+        }
+    }
+    suspend fun forceCompleteDelivery(deviceId: String, robotId: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val url = URL(getUrl("robot/action"))
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json")
+
+            val requestBody = JSONObject().apply {
+                put("deviceId", deviceId)
+                put("robotId", robotId)
+                put("action", "Complete")
+            }
+
+            connection.outputStream.use { it.write(requestBody.toString().toByteArray()) }
+
+            val responseCode = connection.responseCode
+            return@withContext if (responseCode == HttpURLConnection.HTTP_OK) {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                connection.disconnect()
+                val jsonResponse = JSONObject(response)
+                if (jsonResponse.optInt("code") == 0) {
+                    Result.Success(jsonResponse.getJSONObject("data").optBoolean("success", false))
+                } else {
+                    Result.Error("API-Fehler: ${jsonResponse.optString("msg", "Unbekannter Fehler")}")
+                }
+            } else {
+                connection.disconnect()
+                Result.Error("HTTP-Fehler: $responseCode")
+            }
+        } catch (e: Exception) {
+            Result.Error("Fehler beim Erzwingen der Lieferung: ${e.message}")
+        }
+    }
 
 
     // Helper functions

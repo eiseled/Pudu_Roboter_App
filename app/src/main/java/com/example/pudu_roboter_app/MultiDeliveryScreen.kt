@@ -158,6 +158,44 @@ fun MultiDeliveryScreen(
                 Text("Ausführen")
             }
         }
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = {
+                coroutineScope.launch {
+                    val result = connectRobot.cancelAllDeliveries(deviceId, robot.id)
+                    taskStatus = if (result is Result.Success && result.data) {
+                        "Alle Lieferungen wurden abgebrochen!"
+                    } else {
+                        "Fehler: Lieferung konnte nicht abgebrochen werden."
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
+        ) {
+            Text("Abbrechen")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Button(
+            onClick = {
+                coroutineScope.launch {
+                    val result = connectRobot.forceCompleteDelivery(deviceId, robot.id)
+                    taskStatus = if (result is Result.Success && result.data) {
+                        "Lieferung wurde erzwungen!"
+                    } else {
+                        "Fehler: Lieferung konnte nicht erzwungen werden."
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))
+        ) {
+            Text("Lieferung erzwingen")
+        }
+
         Spacer(modifier = Modifier.height(8.dp))
 
         // Navigation buttons fixed at the bottom
