@@ -164,6 +164,48 @@ fun MultiDeliveryScreen(
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Button(
+                onClick = {
+                    coroutineScope.launch {
+                        val result = connectRobot.cancelAllDeliveries(deviceId, robot.id)
+                        taskStatus = if (result is Result.Success && result.data) {
+                            "Alle Lieferungen wurden abgebrochen!"
+                        } else {
+                            "Fehler: Lieferung konnte nicht abgebrochen werden."
+                        }
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))
+            ) {
+                Text("Stoppe Pudu")
+            }
+
+            Spacer(modifier = Modifier.width(8.dp)) // Optional, für etwas Abstand zwischen den Buttons
+
+            Button(
+                onClick = {
+                    coroutineScope.launch {
+                        val result = connectRobot.forceCompleteDelivery(deviceId, robot.id)
+                        taskStatus = if (result is Result.Success && result.data) {
+                            "Lieferung wurde erzwungen!"
+                        } else {
+                            "Fehler: Lieferung konnte nicht erzwungen werden."
+                        }
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))
+            ) {
+                Text("Lieferung erzwingen")
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -186,50 +228,6 @@ fun MultiDeliveryScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))
             ) {
                 Text("Karte anzeigen")
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp)) // Optional, Abstand zwischen den Reihen
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Button(
-                onClick = {
-                    coroutineScope.launch {
-                        val result = connectRobot.cancelAllDeliveries(deviceId, robot.id)
-                        taskStatus = if (result is Result.Success && result.data) {
-                            "Alle Lieferungen wurden abgebrochen!"
-                        } else {
-                            "Fehler: Lieferung konnte nicht abgebrochen werden."
-                        }
-                    }
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))
-            ) {
-                Text("Abbrechen")
-            }
-
-            Spacer(modifier = Modifier.width(8.dp)) // Optional, für etwas Abstand zwischen den Buttons
-
-            Button(
-                onClick = {
-                    coroutineScope.launch {
-                        val result = connectRobot.forceCompleteDelivery(deviceId, robot.id)
-                        taskStatus = if (result is Result.Success && result.data) {
-                            "Lieferung wurde erzwungen!"
-                        } else {
-                            "Fehler: Lieferung konnte nicht erzwungen werden."
-                        }
-                    }
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2001A))
-            ) {
-                Text("Lieferung erzwingen")
             }
         }
 
