@@ -36,7 +36,7 @@ fun ServerInputScreen(
             painter = painterResource(id = R.drawable.logo),
             contentDescription = "Logo",
             modifier = Modifier
-                .size(250.dp)  // Passe die Größe nach Bedarf an
+                .size(300.dp)  // Passe die Größe nach Bedarf an
         )
         Text("Serveradresse eingeben", fontSize = 24.sp)
         Spacer(Modifier.height(16.dp))

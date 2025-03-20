@@ -110,6 +110,9 @@ fun MultiDeliveryScreen(
 
             // Selected destinations
             LazyColumn(
+                Modifier
+                .fillMaxWidth()
+                .weight(1f) // Ensures the list takes up available space
             ) {
                 items(selectedDestinations) { destination ->
                     Card(
