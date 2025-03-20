@@ -88,6 +88,7 @@ fun MultiDeliveryScreen(
         ) {
             // Available destinations
             LazyColumn(
+                modifier = Modifier.weight(1f)
             ) {
                 items(filteredDestinations) { destination ->
                     val isSelected = selectedDestinations.contains(destination)
