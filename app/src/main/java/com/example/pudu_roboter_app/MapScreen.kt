@@ -2,12 +2,16 @@ package com.example.pudu_roboter_app
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -23,13 +27,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavHostController
 import kotlinx.coroutines.launch
+import kotlin.math.min
 
 @Composable
 fun RobotMapScreen(
-    navController: androidx.navigation.NavHostController,
+    navController: NavHostController,
     serverAddress: String,
     deviceId: String,
     robot: Robot
@@ -39,6 +47,10 @@ fun RobotMapScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     val coroutineScope = rememberCoroutineScope()
+
+    var offsetX by remember { mutableStateOf(0f) }
+    var offsetY by remember { mutableStateOf(0f) }
+    var scale by remember { mutableStateOf(1f) } // Dynamische Skalierung
 
     LaunchedEffect(Unit) {
         coroutineScope.launch {
@@ -58,7 +70,6 @@ fun RobotMapScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text("Karte für Roboter: ${robot.name}", fontSize = 24.sp)
-        Text("ID: ${robot.id}", fontSize = 16.sp, color = Color.Gray)
         Spacer(modifier = Modifier.height(16.dp))
 
         if (isLoading) {
@@ -72,11 +83,20 @@ fun RobotMapScreen(
                     .fillMaxSize()
                     .weight(1f)
                     .background(Color.LightGray)
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            scale = (scale * zoom).coerceIn(0.5f, 5f) // Begrenzung des Zooms
+                            offsetX += pan.x
+                            offsetY += pan.y
+                        }
+                    }
             ) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
-                    val scale = 50f
-                    val offsetX = size.width / 2
-                    val offsetY = size.height / 2
+                    val screenSize = min(size.width, size.height)
+                    val dynamicScale = (screenSize / 10) * scale // Dynamische Berechnung
+
+                    val centerX = size.width / 2 + offsetX
+                    val centerY = size.height / 2 + offsetY
 
                     mapElements.forEach { element ->
                         when (element.type) {
@@ -85,8 +105,12 @@ fun RobotMapScreen(
                                     val (x1, y1, x2, y2) = element.vector
                                     drawLine(
                                         color = Color.Blue,
-                                        start = Offset(offsetX + (x1 * scale).toFloat(), offsetY - (y1 * scale).toFloat()),
-                                        end = Offset(offsetX + (x2 * scale).toFloat(), offsetY - (y2 * scale).toFloat()),
+                                        start = Offset((centerX + (x1 * dynamicScale)).toFloat(),
+                                            (centerY - (y1 * dynamicScale)).toFloat()
+                                        ),
+                                        end = Offset((centerX + (x2 * dynamicScale)).toFloat(),
+                                            (centerY - (y2 * dynamicScale)).toFloat()
+                                        ),
                                         strokeWidth = 3f
                                     )
                                 }
@@ -103,11 +127,23 @@ fun RobotMapScreen(
                                         else -> Color.Black
                                     }
 
-                                    // Draw the point
+                                    val position = Offset((centerX + (x * dynamicScale)).toFloat(),
+                                        (centerY - (y * dynamicScale)).toFloat()
+                                    )
+
                                     drawCircle(
                                         color = pointColor,
-                                        center = Offset(offsetX + (x * scale).toFloat(), offsetY - (y * scale).toFloat()),
-                                        radius = 8f
+                                        center = position,
+                                        radius = 10f
+                                    )
+
+                                    drawContext.canvas.nativeCanvas.drawText(
+                                        element.name!!,
+                                        position.x + 12f, position.y,
+                                        android.graphics.Paint().apply {
+                                            color = android.graphics.Color.BLACK
+                                            textSize = 28f
+                                        }
                                     )
                                 }
                             }
@@ -122,8 +158,12 @@ fun RobotMapScreen(
                                             )
                                             drawLine(
                                                 color = Color.Magenta,
-                                                start = Offset(offsetX + (x1 * scale).toFloat(), offsetY - (y1 * scale).toFloat()),
-                                                end = Offset(offsetX + (x2 * scale).toFloat(), offsetY - (y2 * scale).toFloat()),
+                                                start = Offset((centerX + (x1 * dynamicScale)).toFloat(),
+                                                    (centerY - (y1 * dynamicScale)).toFloat()
+                                                ),
+                                                end = Offset((centerX + (x2 * dynamicScale)).toFloat(),
+                                                    (centerY - (y2 * dynamicScale)).toFloat()
+                                                ),
                                                 strokeWidth = 2f
                                             )
                                         }
